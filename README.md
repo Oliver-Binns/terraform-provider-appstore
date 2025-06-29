@@ -4,7 +4,7 @@
 
 This repository is a [Terraform](https://www.terraform.io) provider for managing resources in [App Store Connect](https://appstoreconnect.apple.com).
 
-This project will be [available on the Terraform Registry](https://registry.terraform.io/providers/Oliver-Binns/appstore/latest).
+This project is [available on the Terraform Registry](https://registry.terraform.io/providers/Oliver-Binns/appstore/latest).
 
 ## Usage
 
