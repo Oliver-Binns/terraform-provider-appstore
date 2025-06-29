@@ -1,5 +1,3 @@
-# Copyright (c) HashiCorp, Inc.
-
 resource "appstoreconnect_user" "example" {
   first_name = "Oliver"
   last_name  = "Binns"

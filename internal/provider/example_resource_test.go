@@ -81,5 +81,17 @@ func testAccExampleResourceConfig(configurableAttribute string) string {
 resource "appstoreconnect_example" "test" {
   configurable_attribute = %[1]q
 }
+
+provider "appstoreconnect" {
+  issuer_id   = "4389f85c-98c6-4023-ab25-8154fcd9460d"
+  key_id      = "A1234B5678"
+  private_key = <<EOF
+-----BEGIN PRIVATE KEY-----
+MHcCAQEEIG706QZ+qBP9FxNbs8lVhIf0w/hJJ+pMu6YtG/d8uqnkoAoGCCqGSM49
+AwEHoUQDQgAEnMKTGhM0U4Q5rCvgobWZQtcmknAEZOxTqjmtJf1jlTfHO7iLykAj
+AoyVWzvsnOZ2F3ujWssdv6b27lkdrm513w==
+-----END PRIVATE KEY-----
+EOF
+}
 `, configurableAttribute)
 }
