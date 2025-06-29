@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-testing/helper/resource"
 	"github.com/hashicorp/terraform-plugin-testing/knownvalue"
 	"github.com/hashicorp/terraform-plugin-testing/statecheck"
@@ -14,28 +15,48 @@ import (
 )
 
 func TestAccExampleResource(t *testing.T) {
+	accountEmail := fmt.Sprintf(
+		"%s@oliverbinns.co.uk",
+		uuid.New().String(),
+	)
+
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
 		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccExampleResourceConfig("one"),
+				Config: testAccExampleResourceConfig(accountEmail),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
-						"appstoreconnect_example.test",
+						"appstoreconnect_user.test",
 						tfjsonpath.New("id"),
 						knownvalue.StringExact("example-id"),
 					),
 					statecheck.ExpectKnownValue(
-						"appstoreconnect_example.test",
-						tfjsonpath.New("defaulted"),
-						knownvalue.StringExact("example value when not configured"),
+						"appstoreconnect_user.test",
+						tfjsonpath.New("email"),
+						knownvalue.StringExact(accountEmail),
 					),
 					statecheck.ExpectKnownValue(
-						"appstoreconnect_example.test",
-						tfjsonpath.New("configurable_attribute"),
-						knownvalue.StringExact("one"),
+						"appstoreconnect_user.test",
+						tfjsonpath.New("first_name"),
+						knownvalue.StringExact("John"),
+					),
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
+						tfjsonpath.New("last_name"),
+						knownvalue.StringExact("Smith"),
+					),
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
+						tfjsonpath.New("all_apps_visible"),
+						knownvalue.Bool(false),
+					),
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
+						tfjsonpath.New("provisioning_allowed"),
+						knownvalue.Bool(false),
 					),
 				},
 			},
@@ -44,14 +65,9 @@ func TestAccExampleResource(t *testing.T) {
 				ResourceName:      "appstoreconnect_example.test",
 				ImportState:       true,
 				ImportStateVerify: true,
-				// This is not normally necessary, but is here because this
-				// example code does not have an actual upstream service.
-				// Once the Read method is able to refresh information from
-				// the upstream service, this can be removed.
-				ImportStateVerifyIgnore: []string{"configurable_attribute", "defaulted"},
 			},
-			// Update and Read testing
-			{
+			// Update and read: not currently supported, but this is how it would look
+			/*{
 				Config: testAccExampleResourceConfig("two"),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
@@ -70,16 +86,22 @@ func TestAccExampleResource(t *testing.T) {
 						knownvalue.StringExact("two"),
 					),
 				},
-			},
+			},*/
 			// Delete testing automatically occurs in TestCase
 		},
 	})
 }
 
-func testAccExampleResourceConfig(configurableAttribute string) string {
+func testAccExampleResourceConfig(accountEmail string) string {
 	return fmt.Sprintf(`
-resource "appstoreconnect_example" "test" {
-  configurable_attribute = %[1]q
+resource "appstoreconnect_user" "test" {
+  first_name = "John"
+  last_name  = "Smith"
+
+  email = "%s"
+
+  all_apps_visible     = false
+  provisioning_allowed = false
 }
 
 provider "appstoreconnect" {
@@ -93,5 +115,5 @@ AoyVWzvsnOZ2F3ujWssdv6b27lkdrm513w==
 -----END PRIVATE KEY-----
 EOF
 }
-`, configurableAttribute)
+`, accountEmail)
 }
