@@ -104,16 +104,25 @@ resource "appstoreconnect_user" "test" {
   provisioning_allowed = false
 }
 
+variable "issuer_id" {
+  type        = string
+  sensitive   = true
+}
+
+variable "key_id" {
+  type        = string
+  sensitive   = true
+}
+
+variable "private_key" {
+  type        = string
+  sensitive   = true
+}
+
 provider "appstoreconnect" {
-  issuer_id   = "4389f85c-98c6-4023-ab25-8154fcd9460d"
-  key_id      = "A1234B5678"
-  private_key = <<EOF
------BEGIN PRIVATE KEY-----
-MHcCAQEEIG706QZ+qBP9FxNbs8lVhIf0w/hJJ+pMu6YtG/d8uqnkoAoGCCqGSM49
-AwEHoUQDQgAEnMKTGhM0U4Q5rCvgobWZQtcmknAEZOxTqjmtJf1jlTfHO7iLykAj
-AoyVWzvsnOZ2F3ujWssdv6b27lkdrm513w==
------END PRIVATE KEY-----
-EOF
+  issuer_id   = var.issuer_id
+  key_id      = var.key_id
+  private_key = var.private_key
 }
 `, accountEmail)
 }
