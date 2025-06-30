@@ -114,6 +114,37 @@ func (r *UserResource) Configure(ctx context.Context, req resource.ConfigureRequ
 	r.client = client
 }
 
+func (r UserResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
+	// If the resource is being modified (neither created, nor destroyed):
+	if !req.State.Raw.IsNull() && !req.Plan.Raw.IsNull() {
+		// Read Terraform state data into a model
+		var data UserResourceModel
+		resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
+
+		// Check if the user has accepted their email invite yet:
+		user, err := r.client.GetUser(ctx, data.ID.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError(
+				"Fetch error",
+				fmt.Sprintf("Unable to fetch state of user %s, got error: %s", data.ID.ValueString(), err),
+			)
+			return
+		}
+
+		// If not, we must replace the resource:
+		if !user.HasAcceptedInvite {
+			for p := range req.State.Schema.GetAttributes() {
+				resp.RequiresReplace = append(resp.RequiresReplace, path.Root(p))
+			}
+
+			resp.Diagnostics.AddWarning(
+				"Cannot modify user",
+				"Users cannot be modified until they have accepted their email invite to App Store Connect. This resource will be destroyed and recreated.",
+			)
+		}
+	}
+}
+
 func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, resp *resource.CreateResponse) {
 	var data UserResourceModel
 
