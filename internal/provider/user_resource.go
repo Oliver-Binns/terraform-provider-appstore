@@ -10,6 +10,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
+	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/oliver-binns/appstore-go"
@@ -57,14 +59,23 @@ func (r *UserResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			"first_name": schema.StringAttribute{
 				MarkdownDescription: "User's first name",
 				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"last_name": schema.StringAttribute{
 				MarkdownDescription: "User's last name",
 				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"email": schema.StringAttribute{
 				MarkdownDescription: "User's email address",
 				Required:            true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"roles": schema.SetAttribute{
 				MarkdownDescription: "User's roles in the Apple Developer Program",
@@ -191,17 +202,39 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 		return
 	}
 
-	// If applicable, this is a great opportunity to initialize any necessary
-	// provider client data and make a call using it.
-	// httpResp, err := r.client.Do(httpReq)
-	// if err != nil {
-	//     resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to update example, got error: %s", err))
-	//     return
-	// }
-	resp.Diagnostics.AddError("Update Not Supported", "The update operation is not supported for this resource. Please recreate the resource with the desired changes.")
+	roles := []users.UserRole{}
+	diag := data.Roles.ElementsAs(ctx, &roles, false)
+	resp.Diagnostics.Append(diag...)
+
+	user, err := r.client.ModifyUser(ctx, data.ID.ValueString(), users.User{
+		FirstName:           data.FirstName.ValueString(),
+		LastName:            data.LastName.ValueString(),
+		Username:            data.Email.ValueString(),
+		Roles:               roles,
+		AllAppsVisible:      data.AllAppsVisible.ValueBool(),
+		ProvisioningAllowed: data.ProvisioningAllowed.ValueBool(),
+	})
+
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to modify user, got error: %s", err))
+		return
+	}
+
+	tflog.Trace(ctx, "modified a user")
+
+	data.ID = types.StringValue(user.ID)
+	data.FirstName = types.StringValue(user.FirstName)
+	data.LastName = types.StringValue(user.LastName)
+	data.Email = types.StringValue(user.Username)
+
+	data.Roles, diag = types.SetValueFrom(ctx, types.StringType, user.Roles)
+	resp.Diagnostics.Append(diag...)
+
+	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
+	data.ProvisioningAllowed = types.BoolValue(user.ProvisioningAllowed)
 
 	// Save updated data into Terraform state
-	// resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, resp *resource.DeleteResponse) {
