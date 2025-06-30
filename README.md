@@ -43,6 +43,8 @@ resource "appstoreconnect_user" "example" {
 
   email = "mail@oliverbinns.co.uk"
 
+  roles = ["MARKETING"]
+
   all_apps_visible = true
   provisioning_allowed = true
 }

@@ -3,10 +3,12 @@ module github.com/oliver-binns/terraform-provider-appstore
 go 1.23.7
 
 require (
+	github.com/google/uuid v1.6.0
 	github.com/hashicorp/terraform-plugin-framework v1.15.0
 	github.com/hashicorp/terraform-plugin-go v0.28.0
 	github.com/hashicorp/terraform-plugin-log v0.9.0
 	github.com/hashicorp/terraform-plugin-testing v1.13.2
+	github.com/oliver-binns/appstore-go v0.0.0-20250628131235-392907a1c2c7
 )
 
 require (
@@ -46,7 +48,6 @@ require (
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/oklog/run v1.0.0 // indirect
-	github.com/oliver-binns/appstore-go v0.0.0-20250628131235-392907a1c2c7 // indirect
 	github.com/oliver-binns/googleplay-go v0.0.0-20250628102308-9551b2040f75 // indirect
 	github.com/rogpeppe/go-internal v1.12.0 // indirect
 	github.com/vmihailenco/msgpack v4.0.4+incompatible // indirect

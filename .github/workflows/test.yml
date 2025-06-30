@@ -15,6 +15,11 @@ on:
 permissions:
   contents: read
 
+env:
+  TF_VAR_issuer_id: ${{ vars.ASC_API_KEY_ISSUER_ID }}
+  TF_VAR_key_id: ${{ vars.ASC_API_KEY_ID }}
+  TF_VAR_private_key: ${{ secrets.ASC_API_KEY }}
+
 jobs:
   # Ensure project builds before running testing matrix
   build:
