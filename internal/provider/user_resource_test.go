@@ -26,7 +26,7 @@ func TestAccUserResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccUserResourceConfig(accountEmail),
+				Config: testAccUserResourceConfig(accountEmail, "MARKETING"),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_user.test",
@@ -73,40 +73,57 @@ func TestAccUserResource(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
-			// Update and read: not currently supported, but this is how it would look
-			/*{
-				Config: testAccUserResourceConfig("two"),
+			// Update and read:
+			{
+				Config: testAccUserResourceConfig(accountEmail, "DEVELOPER"),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
-						"appstoreconnect_example.test",
+						"appstoreconnect_user.test",
 						tfjsonpath.New("id"),
-						knownvalue.StringExact("example-id"),
+						knownvalue.NotNull(),
 					),
 					statecheck.ExpectKnownValue(
-						"appstoreconnect_example.test",
-						tfjsonpath.New("defaulted"),
-						knownvalue.StringExact("example value when not configured"),
+						"appstoreconnect_user.test",
+						tfjsonpath.New("first_name"),
+						knownvalue.StringExact("John"),
 					),
 					statecheck.ExpectKnownValue(
-						"appstoreconnect_example.test",
-						tfjsonpath.New("configurable_attribute"),
-						knownvalue.StringExact("two"),
+						"appstoreconnect_user.test",
+						tfjsonpath.New("last_name"),
+						knownvalue.StringExact("Smith"),
+					),
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
+						tfjsonpath.New("roles"),
+						knownvalue.SetExact([]knownvalue.Check{
+							knownvalue.StringExact("DEVELOPER"),
+						}),
+					),
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
+						tfjsonpath.New("all_apps_visible"),
+						knownvalue.Bool(false),
+					),
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
+						tfjsonpath.New("provisioning_allowed"),
+						knownvalue.Bool(false),
 					),
 				},
-			},*/
+			},
 			// Delete testing automatically occurs in TestCase
 		},
 	})
 }
 
-func testAccUserResourceConfig(accountEmail string) string {
+func testAccUserResourceConfig(accountEmail string, role string) string {
 	return fmt.Sprintf(`
 resource "appstoreconnect_user" "test" {
   first_name = "John"
   last_name  = "Smith"
 
   email = "%s"
-  roles = ["MARKETING"]
+  roles = ["%s"]
 
   all_apps_visible     = false
   provisioning_allowed = false
@@ -132,5 +149,5 @@ provider "appstoreconnect" {
   key_id      = var.key_id
   private_key = var.private_key
 }
-`, accountEmail)
+`, accountEmail, role)
 }
