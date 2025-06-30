@@ -14,7 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-testing/tfjsonpath"
 )
 
-func TestAccExampleResource(t *testing.T) {
+func TestAccUserResource(t *testing.T) {
 	accountEmail := fmt.Sprintf(
 		"%s@oliverbinns.co.uk",
 		uuid.New().String(),
@@ -26,12 +26,12 @@ func TestAccExampleResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccExampleResourceConfig(accountEmail),
+				Config: testAccUserResourceConfig(accountEmail),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_user.test",
 						tfjsonpath.New("id"),
-						knownvalue.StringExact("example-id"),
+						knownvalue.NotNull(),
 					),
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_user.test",
@@ -50,6 +50,13 @@ func TestAccExampleResource(t *testing.T) {
 					),
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_user.test",
+						tfjsonpath.New("roles"),
+						knownvalue.SetExact([]knownvalue.Check{
+							knownvalue.StringExact("MARKETING"),
+						}),
+					),
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
 						tfjsonpath.New("all_apps_visible"),
 						knownvalue.Bool(false),
 					),
@@ -62,13 +69,13 @@ func TestAccExampleResource(t *testing.T) {
 			},
 			// ImportState testing
 			{
-				ResourceName:      "appstoreconnect_example.test",
+				ResourceName:      "appstoreconnect_user.test",
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
 			// Update and read: not currently supported, but this is how it would look
 			/*{
-				Config: testAccExampleResourceConfig("two"),
+				Config: testAccUserResourceConfig("two"),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_example.test",
@@ -92,13 +99,14 @@ func TestAccExampleResource(t *testing.T) {
 	})
 }
 
-func testAccExampleResourceConfig(accountEmail string) string {
+func testAccUserResourceConfig(accountEmail string) string {
 	return fmt.Sprintf(`
 resource "appstoreconnect_user" "test" {
   first_name = "John"
   last_name  = "Smith"
 
   email = "%s"
+  roles = ["MARKETING"]
 
   all_apps_visible     = false
   provisioning_allowed = false

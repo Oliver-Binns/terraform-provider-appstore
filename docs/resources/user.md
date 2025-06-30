@@ -22,6 +22,7 @@ Manage users in the Apple Developer Program using the App Store Connect API.
 - `first_name` (String) User's first name
 - `last_name` (String) User's last name
 - `provisioning_allowed` (Boolean) Whether the user is allowed to create new provisioning profiles
+- `roles` (Set of String) User's roles in the Apple Developer Program
 
 ### Read-Only
 

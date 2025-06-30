@@ -35,6 +35,7 @@ type UserResourceModel struct {
 	FirstName           types.String `tfsdk:"first_name"`
 	LastName            types.String `tfsdk:"last_name"`
 	Email               types.String `tfsdk:"email"`
+	Roles               types.Set    `tfsdk:"roles"`
 	AllAppsVisible      types.Bool   `tfsdk:"all_apps_visible"`
 	ProvisioningAllowed types.Bool   `tfsdk:"provisioning_allowed"`
 }
@@ -63,6 +64,11 @@ func (r *UserResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			},
 			"email": schema.StringAttribute{
 				MarkdownDescription: "User's email address",
+				Required:            true,
+			},
+			"roles": schema.SetAttribute{
+				MarkdownDescription: "User's roles in the Apple Developer Program",
+				ElementType:         types.StringType,
 				Required:            true,
 			},
 			"all_apps_visible": schema.BoolAttribute{
@@ -107,10 +113,15 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 		return
 	}
 
+	roles := []users.UserRole{}
+	diag := data.Roles.ElementsAs(ctx, &roles, false)
+	resp.Diagnostics.Append(diag...)
+
 	user, err := r.client.CreateUser(ctx, users.User{
 		FirstName:           data.FirstName.ValueString(),
 		LastName:            data.LastName.ValueString(),
 		Username:            data.Email.ValueString(),
+		Roles:               roles,
 		AllAppsVisible:      data.AllAppsVisible.ValueBool(),
 		ProvisioningAllowed: data.ProvisioningAllowed.ValueBool(),
 	})
@@ -126,6 +137,10 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 	data.FirstName = types.StringValue(user.FirstName)
 	data.LastName = types.StringValue(user.LastName)
 	data.Email = types.StringValue(user.Username)
+
+	data.Roles, diag = types.SetValueFrom(ctx, types.StringType, user.Roles)
+	resp.Diagnostics.Append(diag...)
+
 	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
 	data.ProvisioningAllowed = types.BoolValue(user.ProvisioningAllowed)
 
@@ -149,6 +164,11 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	data.FirstName = types.StringValue(user.FirstName)
 	data.LastName = types.StringValue(user.LastName)
 	data.Email = types.StringValue(user.Username)
+
+	roles, diag := types.SetValueFrom(ctx, types.StringType, user.Roles)
+	data.Roles = roles
+	resp.Diagnostics.Append(diag...)
+
 	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
 	data.ProvisioningAllowed = types.BoolValue(user.ProvisioningAllowed)
 
