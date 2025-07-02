@@ -39,6 +39,7 @@ type UserResourceModel struct {
 	Email               types.String `tfsdk:"email"`
 	Roles               types.Set    `tfsdk:"roles"`
 	AllAppsVisible      types.Bool   `tfsdk:"all_apps_visible"`
+	VisibleApps         types.Set    `tfsdk:"visible_apps"`
 	ProvisioningAllowed types.Bool   `tfsdk:"provisioning_allowed"`
 }
 
@@ -84,7 +85,12 @@ func (r *UserResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			},
 			"all_apps_visible": schema.BoolAttribute{
 				MarkdownDescription: "Whether the user can see all apps",
-				Required:            true,
+				Optional:            true,
+			},
+			"visible_apps": schema.SetAttribute{
+				MarkdownDescription: "A list of IDs for the apps that the user has permission to see",
+				ElementType:         types.StringType,
+				Optional:            true,
 			},
 			"provisioning_allowed": schema.BoolAttribute{
 				MarkdownDescription: "Whether the user is allowed to create new provisioning profiles",
@@ -112,6 +118,26 @@ func (r *UserResource) Configure(ctx context.Context, req resource.ConfigureRequ
 	}
 
 	r.client = client
+}
+
+func (r UserResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var data UserResourceModel
+
+	resp.Diagnostics.Append(req.Config.Get(ctx, &data)...)
+
+	if resp.Diagnostics.HasError() {
+		return
+	}
+
+	// If the user can view all apps, the list of apps must not be set
+	if data.AllAppsVisible.ValueBool() && !data.VisibleApps.IsUnknown() {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("visible_apps"),
+			"Invalid Configuration",
+			"If `all_apps_visible` is set to true, the list of visible apps must not be provided.",
+		)
+		return
+	}
 }
 
 func (r UserResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanRequest, resp *resource.ModifyPlanResponse) {
@@ -159,12 +185,17 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 	diag := data.Roles.ElementsAs(ctx, &roles, false)
 	resp.Diagnostics.Append(diag...)
 
+	appIDs := []string{}
+	diag = data.VisibleApps.ElementsAs(ctx, &appIDs, false)
+	resp.Diagnostics.Append(diag...)
+
 	user, err := r.client.CreateUser(ctx, users.User{
 		FirstName:           data.FirstName.ValueString(),
 		LastName:            data.LastName.ValueString(),
 		Username:            data.Email.ValueString(),
 		Roles:               roles,
 		AllAppsVisible:      data.AllAppsVisible.ValueBool(),
+		VisibleAppIDs:       appIDs,
 		ProvisioningAllowed: data.ProvisioningAllowed.ValueBool(),
 	})
 
@@ -181,6 +212,9 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 	data.Email = types.StringValue(user.Username)
 
 	data.Roles, diag = types.SetValueFrom(ctx, types.StringType, user.Roles)
+	resp.Diagnostics.Append(diag...)
+
+	data.VisibleApps, diag = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
 	resp.Diagnostics.Append(diag...)
 
 	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
@@ -211,6 +245,9 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	data.Roles = roles
 	resp.Diagnostics.Append(diag...)
 
+	data.VisibleApps, diag = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
+	resp.Diagnostics.Append(diag...)
+
 	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
 	data.ProvisioningAllowed = types.BoolValue(user.ProvisioningAllowed)
 
@@ -237,12 +274,17 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	diag := data.Roles.ElementsAs(ctx, &roles, false)
 	resp.Diagnostics.Append(diag...)
 
+	appIDs := []string{}
+	diag = data.VisibleApps.ElementsAs(ctx, &appIDs, false)
+	resp.Diagnostics.Append(diag...)
+
 	user, err := r.client.ModifyUser(ctx, data.ID.ValueString(), users.User{
 		FirstName:           data.FirstName.ValueString(),
 		LastName:            data.LastName.ValueString(),
 		Username:            data.Email.ValueString(),
 		Roles:               roles,
 		AllAppsVisible:      data.AllAppsVisible.ValueBool(),
+		VisibleAppIDs:       appIDs,
 		ProvisioningAllowed: data.ProvisioningAllowed.ValueBool(),
 	})
 
@@ -259,6 +301,9 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	data.Email = types.StringValue(user.Username)
 
 	data.Roles, diag = types.SetValueFrom(ctx, types.StringType, user.Roles)
+	resp.Diagnostics.Append(diag...)
+
+	data.VisibleApps, diag = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
 	resp.Diagnostics.Append(diag...)
 
 	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)

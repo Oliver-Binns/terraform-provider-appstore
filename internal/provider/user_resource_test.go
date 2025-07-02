@@ -5,6 +5,7 @@ package provider
 
 import (
 	"fmt"
+	"regexp"
 	"testing"
 
 	"github.com/google/uuid"
@@ -26,7 +27,7 @@ func TestAccUserResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccUserResourceConfig(accountEmail, "MARKETING"),
+				Config: testAccUserResourceConfig(accountEmail, "MARKETING", false, ""),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_user.test",
@@ -62,6 +63,11 @@ func TestAccUserResource(t *testing.T) {
 					),
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_user.test",
+						tfjsonpath.New("visible_apps"),
+						knownvalue.SetExact([]knownvalue.Check{}),
+					),
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
 						tfjsonpath.New("provisioning_allowed"),
 						knownvalue.Bool(false),
 					),
@@ -73,9 +79,14 @@ func TestAccUserResource(t *testing.T) {
 				ImportState:       true,
 				ImportStateVerify: true,
 			},
+			// Fail validation:
+			{
+				Config:      testAccUserResourceConfig(accountEmail, "DEVELOPER", true, `"1598625719"`),
+				ExpectError: regexp.MustCompile("Invalid Configuration"),
+			},
 			// Update and read:
 			{
-				Config: testAccUserResourceConfig(accountEmail, "DEVELOPER"),
+				Config: testAccUserResourceConfig(accountEmail, "DEVELOPER", false, `"1598625719"`),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_user.test",
@@ -106,6 +117,13 @@ func TestAccUserResource(t *testing.T) {
 					),
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_user.test",
+						tfjsonpath.New("visible_apps"),
+						knownvalue.SetExact([]knownvalue.Check{
+							knownvalue.StringExact("1598625719"),
+						}),
+					),
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
 						tfjsonpath.New("provisioning_allowed"),
 						knownvalue.Bool(false),
 					),
@@ -116,7 +134,7 @@ func TestAccUserResource(t *testing.T) {
 	})
 }
 
-func testAccUserResourceConfig(accountEmail string, role string) string {
+func testAccUserResourceConfig(accountEmail string, role string, all_apps_visible bool, app_visible string) string {
 	return fmt.Sprintf(`
 resource "appstoreconnect_user" "test" {
   first_name = "John"
@@ -125,7 +143,8 @@ resource "appstoreconnect_user" "test" {
   email = "%s"
   roles = ["%s"]
 
-  all_apps_visible     = false
+  all_apps_visible     = %t
+  visible_apps         = [%s]
   provisioning_allowed = false
 }
 
@@ -149,5 +168,5 @@ provider "appstoreconnect" {
   key_id      = var.key_id
   private_key = var.private_key
 }
-`, accountEmail, role)
+`, accountEmail, role, all_apps_visible, app_visible)
 }

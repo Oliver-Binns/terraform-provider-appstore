@@ -17,12 +17,16 @@ Manage users in the Apple Developer Program using the App Store Connect API.
 
 ### Required
 
-- `all_apps_visible` (Boolean) Whether the user can see all apps
 - `email` (String) User's email address
 - `first_name` (String) User's first name
 - `last_name` (String) User's last name
 - `provisioning_allowed` (Boolean) Whether the user is allowed to create new provisioning profiles
 - `roles` (Set of String) User's roles in the Apple Developer Program
+
+### Optional
+
+- `all_apps_visible` (Boolean) Whether the user can see all apps
+- `visible_apps` (Set of String) A list of IDs for the apps that the user has permission to see
 
 ### Read-Only
 
