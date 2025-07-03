@@ -130,7 +130,7 @@ func (r UserResource) ValidateConfig(ctx context.Context, req resource.ValidateC
 	}
 
 	// If the user can view all apps, the list of apps must not be set
-	if data.AllAppsVisible.ValueBool() && !data.VisibleApps.IsUnknown() {
+	if data.AllAppsVisible.ValueBool() && !data.VisibleApps.IsNull() {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("visible_apps"),
 			"Invalid Configuration",
