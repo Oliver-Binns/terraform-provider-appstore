@@ -84,8 +84,8 @@ github.com/hashicorp/terraform-exec v0.23.0 h1:MUiBM1s0CNlRFsCLJuM5wXZrzA3MnPYEs
 github.com/hashicorp/terraform-exec v0.23.0/go.mod h1:mA+qnx1R8eePycfwKkCRk3Wy65mwInvlpAeOwmA7vlY=
 github.com/hashicorp/terraform-json v0.25.0 h1:rmNqc/CIfcWawGiwXmRuiXJKEiJu1ntGoxseG1hLhoQ=
 github.com/hashicorp/terraform-json v0.25.0/go.mod h1:sMKS8fiRDX4rVlR6EJUMudg1WcanxCMoWwTLkgZP/vc=
-github.com/hashicorp/terraform-plugin-framework v1.15.0 h1:LQ2rsOfmDLxcn5EeIwdXFtr03FVsNktbbBci8cOKdb4=
-github.com/hashicorp/terraform-plugin-framework v1.15.0/go.mod h1:hxrNI/GY32KPISpWqlCoTLM9JZsGH3CyYlir09bD/fI=
+github.com/hashicorp/terraform-plugin-framework v1.15.1 h1:2mKDkwb8rlx/tvJTlIcpw0ykcmvdWv+4gY3SIgk8Pq8=
+github.com/hashicorp/terraform-plugin-framework v1.15.1/go.mod h1:hxrNI/GY32KPISpWqlCoTLM9JZsGH3CyYlir09bD/fI=
 github.com/hashicorp/terraform-plugin-go v0.28.0 h1:zJmu2UDwhVN0J+J20RE5huiF3XXlTYVIleaevHZgKPA=
 github.com/hashicorp/terraform-plugin-go v0.28.0/go.mod h1:FDa2Bb3uumkTGSkTFpWSOwWJDwA7bf3vdP3ltLDTH6o=
 github.com/hashicorp/terraform-plugin-log v0.9.0 h1:i7hOA+vdAItN1/7UrfBqBwvYPQ9TFvymaRGZED3FCV0=
@@ -134,14 +134,6 @@ github.com/mitchellh/reflectwalk v1.0.2 h1:G2LzWKi524PWgd3mLHV8Y5k7s6XUvT0Gef6zx
 github.com/mitchellh/reflectwalk v1.0.2/go.mod h1:mSTlrgnPZtwu0c4WaC2kGObEpuNDbx0jmZXqmk4esnw=
 github.com/oklog/run v1.0.0 h1:Ru7dDtJNOyC66gQ5dQmaCa0qIsAUFY3sFpK1Xk8igrw=
 github.com/oklog/run v1.0.0/go.mod h1:dlhp/R75TPv97u0XWUtDeV/lRKWPKSdTuV0TZvrmrQA=
-github.com/oliver-binns/appstore-go v0.0.0-20250628131235-392907a1c2c7 h1:x+FAunDryfDf5PLDFaCUPdpJElytlvdDLmoUWIev2t0=
-github.com/oliver-binns/appstore-go v0.0.0-20250628131235-392907a1c2c7/go.mod h1:RgHQqeRyFKqR8/EUeJNcB4yJi3L5WVSAMWzSTvXPnrg=
-github.com/oliver-binns/appstore-go v0.0.0-20250630190823-da3cdb21c3f4 h1:2g3nuqYWvLpv/jn9FwmQq+MYQq/vG02iOrLv0gB29Kw=
-github.com/oliver-binns/appstore-go v0.0.0-20250630190823-da3cdb21c3f4/go.mod h1:RgHQqeRyFKqR8/EUeJNcB4yJi3L5WVSAMWzSTvXPnrg=
-github.com/oliver-binns/appstore-go v0.0.0-20250630201404-d5bdc2bf34b1 h1:HFZuI/s5L7SxZ/DOhguf/L4ihYducNhuImVT5Rrt+gM=
-github.com/oliver-binns/appstore-go v0.0.0-20250630201404-d5bdc2bf34b1/go.mod h1:RgHQqeRyFKqR8/EUeJNcB4yJi3L5WVSAMWzSTvXPnrg=
-github.com/oliver-binns/appstore-go v0.0.0-20250702182524-d16f5cca337d h1:48kItwubVowygC/I/d4l8BHDuFX06urEvvBm8lxTIzQ=
-github.com/oliver-binns/appstore-go v0.0.0-20250702182524-d16f5cca337d/go.mod h1:RgHQqeRyFKqR8/EUeJNcB4yJi3L5WVSAMWzSTvXPnrg=
 github.com/oliver-binns/appstore-go v0.0.0-20250702200953-a16502273eda h1:73VvWaLz8BmcoNe2lq2D+Vx+IisIV5YcsC5sNXi5WNs=
 github.com/oliver-binns/appstore-go v0.0.0-20250702200953-a16502273eda/go.mod h1:RgHQqeRyFKqR8/EUeJNcB4yJi3L5WVSAMWzSTvXPnrg=
 github.com/oliver-binns/googleplay-go v0.0.0-20250628102308-9551b2040f75 h1:VA4I9YBHeXFvwrrayDnGizSR26KoUmZw4rbUveyNq2k=
