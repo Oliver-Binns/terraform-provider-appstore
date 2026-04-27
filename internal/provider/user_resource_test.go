@@ -73,11 +73,32 @@ func TestAccUserResource(t *testing.T) {
 					),
 				},
 			},
-			// ImportState testing
+			// ImportState testing by email
+			{
+				ResourceName:      "appstoreconnect_user.test",
+				ImportState:       true,
+				ImportStateId:     accountEmail,
+				ImportStateVerify: true,
+			},
+			// ImportState testing by UUID (legacy support)
 			{
 				ResourceName:      "appstoreconnect_user.test",
 				ImportState:       true,
 				ImportStateVerify: true,
+			},
+			// ImportState with nonexistent email returns a clear error
+			{
+				ResourceName:  "appstoreconnect_user.test",
+				ImportState:   true,
+				ImportStateId: "nonexistent@oliverbinns.co.uk",
+				ExpectError:   regexp.MustCompile("User not found"),
+			},
+			// ImportState with invalid ID returns a clear error
+			{
+				ResourceName:  "appstoreconnect_user.test",
+				ImportState:   true,
+				ImportStateId: "not-a-uuid-or-email",
+				ExpectError:   regexp.MustCompile("Invalid Import ID"),
 			},
 			// Fail validation:
 			{

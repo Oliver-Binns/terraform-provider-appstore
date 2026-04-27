@@ -6,7 +6,9 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
+	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -331,5 +333,32 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 }
 
 func (r *UserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
-	resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+	if _, err := uuid.Parse(req.ID); err == nil {
+		resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+		return
+	}
+
+	if !strings.Contains(req.ID, "@") {
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			fmt.Sprintf("%q is not a valid import ID. Provide either the user's UUID or email address.", req.ID),
+		)
+		return
+	}
+
+	user, err := r.client.FindUserByEmail(ctx, req.ID)
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to find user, got error: %s", err))
+		return
+	}
+
+	if user == nil {
+		resp.Diagnostics.AddError(
+			"User not found",
+			fmt.Sprintf("No App Store Connect user with email %q was found.", req.ID),
+		)
+		return
+	}
+
+	resp.Diagnostics.Append(resp.State.SetAttribute(ctx, path.Root("id"), user.ID)...)
 }
