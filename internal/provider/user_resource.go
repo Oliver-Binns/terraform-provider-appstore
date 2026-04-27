@@ -224,8 +224,12 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 	data.Roles, diag = types.SetValueFrom(ctx, types.StringType, user.Roles)
 	resp.Diagnostics.Append(diag...)
 
-	data.VisibleApps, diag = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
-	resp.Diagnostics.Append(diag...)
+	if user.AllAppsVisible {
+		data.VisibleApps = types.SetNull(types.StringType)
+	} else {
+		data.VisibleApps, diag = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
+		resp.Diagnostics.Append(diag...)
+	}
 
 	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
 	data.ProvisioningAllowed = types.BoolValue(user.ProvisioningAllowed)
@@ -259,8 +263,12 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	data.Roles = roles
 	resp.Diagnostics.Append(diag...)
 
-	data.VisibleApps, diag = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
-	resp.Diagnostics.Append(diag...)
+	if user.AllAppsVisible {
+		data.VisibleApps = types.SetNull(types.StringType)
+	} else {
+		data.VisibleApps, diag = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
+		resp.Diagnostics.Append(diag...)
+	}
 
 	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
 	data.ProvisioningAllowed = types.BoolValue(user.ProvisioningAllowed)
@@ -312,8 +320,12 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	data.Roles, diag = types.SetValueFrom(ctx, types.StringType, user.Roles)
 	resp.Diagnostics.Append(diag...)
 
-	data.VisibleApps, diag = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
-	resp.Diagnostics.Append(diag...)
+	if user.AllAppsVisible {
+		data.VisibleApps = types.SetNull(types.StringType)
+	} else {
+		data.VisibleApps, diag = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
+		resp.Diagnostics.Append(diag...)
+	}
 
 	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
 	data.ProvisioningAllowed = types.BoolValue(user.ProvisioningAllowed)
