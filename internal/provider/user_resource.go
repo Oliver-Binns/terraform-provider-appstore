@@ -24,13 +24,21 @@ import (
 var _ resource.Resource = &UserResource{}
 var _ resource.ResourceWithImportState = &UserResource{}
 
+type userClient interface {
+	GetUser(ctx context.Context, id string) (*users.User, error)
+	CreateUser(ctx context.Context, user users.User) (*users.User, error)
+	ModifyUser(ctx context.Context, id string, user users.User) (*users.User, error)
+	DeleteUser(ctx context.Context, id string) error
+	FindUserByEmail(ctx context.Context, email string) (*users.User, error)
+}
+
 func NewUserResource() resource.Resource {
 	return &UserResource{}
 }
 
 // UserResource defines the resource implementation.
 type UserResource struct {
-	client *appstore.Client
+	client userClient
 }
 
 // UserResourceModel describes the resource data model.
@@ -237,6 +245,10 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	}
 
 	user, err := r.client.GetUser(ctx, data.ID.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read user, got error: %s", err))
+		return
+	}
 
 	data.ID = types.StringValue(user.ID)
 	data.FirstName = types.StringValue(user.FirstName)
@@ -252,11 +264,6 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
 	data.ProvisioningAllowed = types.BoolValue(user.ProvisioningAllowed)
-
-	if err != nil {
-		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read user, got error: %s", err))
-		return
-	}
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
