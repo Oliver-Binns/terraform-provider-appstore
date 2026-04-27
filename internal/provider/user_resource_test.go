@@ -77,6 +77,7 @@ func TestAccUserResource(t *testing.T) {
 			{
 				ResourceName:      "appstoreconnect_user.test",
 				ImportState:       true,
+				ImportStateId:     accountEmail,
 				ImportStateVerify: true,
 			},
 			// Fail validation:
