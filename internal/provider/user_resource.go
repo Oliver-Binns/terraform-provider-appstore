@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/path"
@@ -334,6 +335,14 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 func (r *UserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
 	if _, err := uuid.Parse(req.ID); err == nil {
 		resource.ImportStatePassthroughID(ctx, path.Root("id"), req, resp)
+		return
+	}
+
+	if !strings.Contains(req.ID, "@") {
+		resp.Diagnostics.AddError(
+			"Invalid Import ID",
+			fmt.Sprintf("%q is not a valid import ID. Provide either the user's UUID or email address.", req.ID),
+		)
 		return
 	}
 
