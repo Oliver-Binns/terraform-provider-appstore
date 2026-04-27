@@ -246,6 +246,10 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	}
 
 	if data.ID.IsNull() || data.ID.IsUnknown() || data.ID.ValueString() == "" {
+		if data.Email.IsNull() || data.Email.IsUnknown() || data.Email.ValueString() == "" {
+			resp.State.RemoveResource(ctx)
+			return
+		}
 		user, err := r.client.FindUserByEmail(ctx, data.Email.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to find user by email, got error: %s", err))
