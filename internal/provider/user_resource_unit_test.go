@@ -179,6 +179,49 @@ func TestUserResource_Read_RemovesFromState_WhenIDIsEmptyAndUserNotFound(t *test
 	}
 }
 
+func TestUserResource_Read_RemovesFromState_WhenIDAndEmailAreEmpty(t *testing.T) {
+	r := &UserResource{
+		client: &mockUserClient{
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				t.Fatal("GetUser should not be called when ID is empty")
+				return nil, nil
+			},
+			findUserByEmailFn: func(ctx context.Context, email string) (*users.User, error) {
+				t.Fatal("FindUserByEmail should not be called when email is empty")
+				return nil, nil
+			},
+		},
+	}
+
+	schema := userResourceSchema()
+	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, ""),
+		"first_name":           tftypes.NewValue(tftypes.String, nil),
+		"last_name":            tftypes.NewValue(tftypes.String, nil),
+		"email":                tftypes.NewValue(tftypes.String, ""),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, nil),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, nil),
+	})
+
+	req := resource.ReadRequest{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+	resp := &resource.ReadResponse{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+
+	r.Read(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if !resp.State.Raw.IsNull() {
+		t.Fatal("expected resource to be removed from state, but state is not null")
+	}
+}
+
 func userResourceSchema() schema.Schema {
 	r := &UserResource{}
 	schemaResp := &resource.SchemaResponse{}
