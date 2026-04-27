@@ -73,11 +73,17 @@ func TestAccUserResource(t *testing.T) {
 					),
 				},
 			},
-			// ImportState testing
+			// ImportState testing by email
 			{
 				ResourceName:      "appstoreconnect_user.test",
 				ImportState:       true,
 				ImportStateId:     accountEmail,
+				ImportStateVerify: true,
+			},
+			// ImportState testing by UUID (legacy support)
+			{
+				ResourceName:      "appstoreconnect_user.test",
+				ImportState:       true,
 				ImportStateVerify: true,
 			},
 			// Fail validation:
