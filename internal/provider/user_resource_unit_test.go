@@ -83,6 +83,57 @@ func TestUserResource_Read_ReturnsErrorWithoutPanic(t *testing.T) {
 	}
 }
 
+func TestUserResource_Read_SetsVisibleAppsNullWhenAllAppsVisible(t *testing.T) {
+	r := &UserResource{
+		client: &mockUserClient{
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				return &users.User{
+					ID:                  "some-uuid",
+					FirstName:           "Oliver",
+					LastName:            "Binns",
+					Username:            "obinns@example.com",
+					Roles:               []users.UserRole{users.Admin},
+					AllAppsVisible:      true,
+					ProvisioningAllowed: true,
+					VisibleAppIDs:       []string{},
+				}, nil
+			},
+		},
+	}
+
+	schema := userResourceSchema()
+	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, "some-uuid"),
+		"first_name":           tftypes.NewValue(tftypes.String, nil),
+		"last_name":            tftypes.NewValue(tftypes.String, nil),
+		"email":                tftypes.NewValue(tftypes.String, nil),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, nil),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, nil),
+	})
+
+	req := resource.ReadRequest{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+	resp := &resource.ReadResponse{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+
+	r.Read(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Summary())
+	}
+
+	var data UserResourceModel
+	resp.State.Get(context.Background(), &data)
+
+	if !data.VisibleApps.IsNull() {
+		t.Fatalf("expected visible_apps to be null when all_apps_visible is true, got %s", data.VisibleApps)
+	}
+}
+
 func userResourceSchema() schema.Schema {
 	r := &UserResource{}
 	schemaResp := &resource.SchemaResponse{}

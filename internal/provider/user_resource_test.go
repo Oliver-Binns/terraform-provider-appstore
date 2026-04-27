@@ -155,7 +155,49 @@ func TestAccUserResource(t *testing.T) {
 	})
 }
 
-func testAccUserResourceConfig(accountEmail string, role string, all_apps_visible bool, app_visible string) string {
+func TestAccUserResource_AllAppsVisible(t *testing.T) {
+	accountEmail := fmt.Sprintf(
+		"%s@oliverbinns.co.uk",
+		uuid.New().String(),
+	)
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Create with all_apps_visible = true
+			{
+				Config: testAccUserResourceConfig(accountEmail, "MARKETING", true, ""),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
+						tfjsonpath.New("all_apps_visible"),
+						knownvalue.Bool(true),
+					),
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
+						tfjsonpath.New("visible_apps"),
+						knownvalue.Null(),
+					),
+				},
+			},
+			// Import should not produce a diff against config with visible_apps = null
+			{
+				ResourceName:      "appstoreconnect_user.test",
+				ImportState:       true,
+				ImportStateId:     accountEmail,
+				ImportStateVerify: true,
+			},
+			// Delete testing automatically occurs in TestCase
+		},
+	})
+}
+
+func testAccUserResourceConfig(accountEmail string, role string, allAppsVisible bool, appVisible string) string {
+	visibleAppsLine := ""
+	if !allAppsVisible {
+		visibleAppsLine = fmt.Sprintf("  visible_apps = [%s]", appVisible)
+	}
 	return fmt.Sprintf(`
 resource "appstoreconnect_user" "test" {
   first_name = "John"
@@ -165,23 +207,23 @@ resource "appstoreconnect_user" "test" {
   roles = ["%s"]
 
   all_apps_visible     = %t
-  visible_apps         = [%s]
+%s
   provisioning_allowed = false
 }
 
 variable "issuer_id" {
-  type        = string
-  sensitive   = true
+  type      = string
+  sensitive = true
 }
 
 variable "key_id" {
-  type        = string
-  sensitive   = true
+  type      = string
+  sensitive = true
 }
 
 variable "private_key" {
-  type        = string
-  sensitive   = true
+  type      = string
+  sensitive = true
 }
 
 provider "appstoreconnect" {
@@ -189,5 +231,5 @@ provider "appstoreconnect" {
   key_id      = var.key_id
   private_key = var.private_key
 }
-`, accountEmail, role, all_apps_visible, app_visible)
+`, accountEmail, role, allAppsVisible, visibleAppsLine)
 }
