@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/google/uuid"
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -244,29 +245,48 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
+	if data.ID.IsNull() || data.ID.IsUnknown() || data.ID.ValueString() == "" {
+		user, err := r.client.FindUserByEmail(ctx, data.Email.ValueString())
+		if err != nil {
+			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to find user by email, got error: %s", err))
+			return
+		}
+		if user == nil {
+			resp.State.RemoveResource(ctx)
+			return
+		}
+		r.populateState(ctx, &data, user, resp.Diagnostics)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		return
+	}
+
 	user, err := r.client.GetUser(ctx, data.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read user, got error: %s", err))
 		return
 	}
 
+	r.populateState(ctx, &data, user, resp.Diagnostics)
+
+	// Save updated data into Terraform state
+	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+func (r *UserResource) populateState(ctx context.Context, data *UserResourceModel, user *users.User, diags diag.Diagnostics) {
 	data.ID = types.StringValue(user.ID)
 	data.FirstName = types.StringValue(user.FirstName)
 	data.LastName = types.StringValue(user.LastName)
 	data.Email = types.StringValue(user.Username)
 
-	roles, diag := types.SetValueFrom(ctx, types.StringType, user.Roles)
-	data.Roles = roles
-	resp.Diagnostics.Append(diag...)
+	var d diag.Diagnostics
+	data.Roles, d = types.SetValueFrom(ctx, types.StringType, user.Roles)
+	diags.Append(d...)
 
-	data.VisibleApps, diag = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
-	resp.Diagnostics.Append(diag...)
+	data.VisibleApps, d = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
+	diags.Append(d...)
 
 	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
 	data.ProvisioningAllowed = types.BoolValue(user.ProvisioningAllowed)
-
-	// Save updated data into Terraform state
-	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
 func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, resp *resource.UpdateResponse) {
