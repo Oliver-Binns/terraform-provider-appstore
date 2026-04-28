@@ -134,8 +134,8 @@ github.com/mitchellh/reflectwalk v1.0.2 h1:G2LzWKi524PWgd3mLHV8Y5k7s6XUvT0Gef6zx
 github.com/mitchellh/reflectwalk v1.0.2/go.mod h1:mSTlrgnPZtwu0c4WaC2kGObEpuNDbx0jmZXqmk4esnw=
 github.com/oklog/run v1.0.0 h1:Ru7dDtJNOyC66gQ5dQmaCa0qIsAUFY3sFpK1Xk8igrw=
 github.com/oklog/run v1.0.0/go.mod h1:dlhp/R75TPv97u0XWUtDeV/lRKWPKSdTuV0TZvrmrQA=
-github.com/oliver-binns/appstore-go v0.0.0-20260427205729-6aad5058a7a1 h1:fs1lFzJXgVSpLkPaf/7YOkAwfuZvPG/4H6oDy+FGlNQ=
-github.com/oliver-binns/appstore-go v0.0.0-20260427205729-6aad5058a7a1/go.mod h1:56woJXGdcIh0cByRgzM95X8WZkBrfNWt/czIRfZHfrA=
+github.com/oliver-binns/appstore-go v0.0.0-20260428103222-16db39a6467d h1:unE7IP4FQHv1BmiUd425O0vWRY4Yj9rzi+r340TWjNI=
+github.com/oliver-binns/appstore-go v0.0.0-20260428103222-16db39a6467d/go.mod h1:56woJXGdcIh0cByRgzM95X8WZkBrfNWt/czIRfZHfrA=
 github.com/pjbgf/sha1cd v0.3.2 h1:a9wb0bp1oC2TGwStyn0Umc/IGKQnEgF0vVaZ8QF8eo4=
 github.com/pjbgf/sha1cd v0.3.2/go.mod h1:zQWigSxVmsHEZow5qaLtPYxpcKMMQpa09ixqBxuCS6A=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
