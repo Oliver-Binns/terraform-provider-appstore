@@ -8,6 +8,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
@@ -231,6 +232,44 @@ func userResourceSchema() schema.Schema {
 	schemaResp := &resource.SchemaResponse{}
 	r.Schema(context.Background(), resource.SchemaRequest{}, schemaResp)
 	return schemaResp.Schema
+}
+
+func TestPopulateState_SetsVisibleAppsNullWhenAllAppsVisible(t *testing.T) {
+	r := &UserResource{}
+	data := &UserResourceModel{}
+	var diags diag.Diagnostics
+
+	user := &users.User{
+		AllAppsVisible: true,
+		VisibleAppIDs:  []string{"111", "222"},
+	}
+
+	r.populateState(context.Background(), data, user, diags)
+
+	if !data.VisibleApps.IsNull() {
+		t.Errorf("expected VisibleApps to be null when AllAppsVisible is true, got %v", data.VisibleApps)
+	}
+}
+
+func TestPopulateState_SetsVisibleAppsFromAPIWhenNotAllAppsVisible(t *testing.T) {
+	r := &UserResource{}
+	data := &UserResourceModel{}
+	var diags diag.Diagnostics
+
+	user := &users.User{
+		AllAppsVisible: false,
+		VisibleAppIDs:  []string{"111", "222"},
+	}
+
+	r.populateState(context.Background(), data, user, diags)
+
+	if data.VisibleApps.IsNull() {
+		t.Error("expected VisibleApps to be populated when AllAppsVisible is false")
+	}
+	elements := data.VisibleApps.Elements()
+	if len(elements) != 2 {
+		t.Errorf("expected 2 visible app IDs, got %d", len(elements))
+	}
 }
 
 func TestUserResource_Update_DoesNotSendReadOnlyFields(t *testing.T) {
