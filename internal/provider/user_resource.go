@@ -67,6 +67,9 @@ func (r *UserResource) Schema(ctx context.Context, req resource.SchemaRequest, r
 			"id": schema.StringAttribute{
 				Computed:            true,
 				MarkdownDescription: "User identifier",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"first_name": schema.StringAttribute{
 				MarkdownDescription: "User's first name",
