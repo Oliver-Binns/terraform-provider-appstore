@@ -290,8 +290,12 @@ func (r *UserResource) populateState(ctx context.Context, data *UserResourceMode
 	data.Roles, d = types.SetValueFrom(ctx, types.StringType, user.Roles)
 	diags.Append(d...)
 
-	data.VisibleApps, d = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
-	diags.Append(d...)
+	if user.AllAppsVisible {
+		data.VisibleApps = types.SetNull(types.StringType)
+	} else {
+		data.VisibleApps, d = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
+		diags.Append(d...)
+	}
 
 	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
 	data.ProvisioningAllowed = types.BoolValue(user.ProvisioningAllowed)
