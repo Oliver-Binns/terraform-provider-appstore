@@ -17,6 +17,7 @@ import (
 
 type mockUserClient struct {
 	getUserFn         func(ctx context.Context, id string) (*users.User, error)
+	modifyUserFn      func(ctx context.Context, id string, user users.User) (*users.User, error)
 	findUserByEmailFn func(ctx context.Context, email string) (*users.User, error)
 }
 
@@ -29,7 +30,10 @@ func (m *mockUserClient) CreateUser(ctx context.Context, user users.User) (*user
 }
 
 func (m *mockUserClient) ModifyUser(ctx context.Context, id string, user users.User) (*users.User, error) {
-	return nil, nil
+	if m.modifyUserFn != nil {
+		return m.modifyUserFn(ctx, id, user)
+	}
+	return &users.User{}, nil
 }
 
 func (m *mockUserClient) DeleteUser(ctx context.Context, id string) error {
@@ -227,4 +231,55 @@ func userResourceSchema() schema.Schema {
 	schemaResp := &resource.SchemaResponse{}
 	r.Schema(context.Background(), resource.SchemaRequest{}, schemaResp)
 	return schemaResp.Schema
+}
+
+func TestUserResource_Update_DoesNotSendReadOnlyFields(t *testing.T) {
+	var capturedUser users.User
+
+	r := &UserResource{
+		client: &mockUserClient{
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				return &users.User{HasAcceptedInvite: true}, nil
+			},
+			modifyUserFn: func(ctx context.Context, id string, user users.User) (*users.User, error) {
+				capturedUser = user
+				return &users.User{}, nil
+			},
+		},
+	}
+
+	schema := userResourceSchema()
+	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, "some-uuid"),
+		"first_name":           tftypes.NewValue(tftypes.String, "John"),
+		"last_name":            tftypes.NewValue(tftypes.String, "Smith"),
+		"email":                tftypes.NewValue(tftypes.String, "jsmith@example.com"),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{tftypes.NewValue(tftypes.String, "DEVELOPER")}),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, false),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{}),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, true),
+	})
+
+	req := resource.UpdateRequest{
+		Plan:  tfsdk.Plan{Schema: schema, Raw: stateVal},
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+	resp := &resource.UpdateResponse{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+
+	r.Update(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if capturedUser.FirstName != "" {
+		t.Errorf("expected FirstName to be empty in ModifyUser call, got %q", capturedUser.FirstName)
+	}
+	if capturedUser.LastName != "" {
+		t.Errorf("expected LastName to be empty in ModifyUser call, got %q", capturedUser.LastName)
+	}
+	if capturedUser.Username != "" {
+		t.Errorf("expected Username to be empty in ModifyUser call, got %q", capturedUser.Username)
+	}
 }
