@@ -313,9 +313,6 @@ func (r *UserResource) Update(ctx context.Context, req resource.UpdateRequest, r
 	resp.Diagnostics.Append(diag...)
 
 	user, err := r.client.ModifyUser(ctx, data.ID.ValueString(), users.User{
-		FirstName:           data.FirstName.ValueString(),
-		LastName:            data.LastName.ValueString(),
-		Username:            data.Email.ValueString(),
 		Roles:               roles,
 		AllAppsVisible:      data.AllAppsVisible.ValueBool(),
 		VisibleAppIDs:       appIDs,
