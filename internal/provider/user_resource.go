@@ -220,19 +220,7 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	tflog.Trace(ctx, "created a new user")
 
-	data.ID = types.StringValue(user.ID)
-	data.FirstName = types.StringValue(user.FirstName)
-	data.LastName = types.StringValue(user.LastName)
-	data.Email = types.StringValue(user.Username)
-
-	data.Roles, diag = types.SetValueFrom(ctx, types.StringType, user.Roles)
-	resp.Diagnostics.Append(diag...)
-
-	data.VisibleApps, diag = types.SetValueFrom(ctx, types.StringType, user.VisibleAppIDs)
-	resp.Diagnostics.Append(diag...)
-
-	data.AllAppsVisible = types.BoolValue(user.AllAppsVisible)
-	data.ProvisioningAllowed = types.BoolValue(user.ProvisioningAllowed)
+	r.populateState(ctx, &data, user, resp.Diagnostics)
 
 	// Save data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
