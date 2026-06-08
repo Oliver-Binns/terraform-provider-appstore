@@ -17,6 +17,7 @@ import (
 )
 
 type mockUserClient struct {
+	createUserFn      func(ctx context.Context, user users.User) (*users.User, error)
 	getUserFn         func(ctx context.Context, id string) (*users.User, error)
 	modifyUserFn      func(ctx context.Context, id string, user users.User) (*users.User, error)
 	findUserByEmailFn func(ctx context.Context, email string) (*users.User, error)
@@ -27,7 +28,10 @@ func (m *mockUserClient) GetUser(ctx context.Context, id string) (*users.User, e
 }
 
 func (m *mockUserClient) CreateUser(ctx context.Context, user users.User) (*users.User, error) {
-	return nil, nil
+	if m.createUserFn != nil {
+		return m.createUserFn(ctx, user)
+	}
+	return &users.User{}, nil
 }
 
 func (m *mockUserClient) ModifyUser(ctx context.Context, id string, user users.User) (*users.User, error) {
@@ -269,6 +273,52 @@ func TestPopulateState_SetsVisibleAppsFromAPIWhenNotAllAppsVisible(t *testing.T)
 	elements := data.VisibleApps.Elements()
 	if len(elements) != 2 {
 		t.Errorf("expected 2 visible app IDs, got %d", len(elements))
+	}
+}
+
+func TestUserResource_Create_SetsVisibleAppsNullWhenAllAppsVisible(t *testing.T) {
+	r := &UserResource{
+		client: &mockUserClient{
+			createUserFn: func(ctx context.Context, user users.User) (*users.User, error) {
+				return &users.User{
+					ID:             "new-uuid",
+					AllAppsVisible: true,
+					VisibleAppIDs:  []string{},
+				}, nil
+			},
+		},
+	}
+
+	schema := userResourceSchema()
+	planVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, ""),
+		"first_name":           tftypes.NewValue(tftypes.String, "Jo"),
+		"last_name":            tftypes.NewValue(tftypes.String, "Dubey"),
+		"email":                tftypes.NewValue(tftypes.String, "jodubey@example.com"),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{tftypes.NewValue(tftypes.String, "DEVELOPER")}),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, true),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, false),
+	})
+
+	req := resource.CreateRequest{
+		Plan: tfsdk.Plan{Schema: schema, Raw: planVal},
+	}
+	resp := &resource.CreateResponse{
+		State: tfsdk.State{Schema: schema, Raw: planVal},
+	}
+
+	r.Create(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+
+	var data UserResourceModel
+	resp.State.Get(context.Background(), &data)
+
+	if !data.VisibleApps.IsNull() {
+		t.Errorf("expected VisibleApps to be null when AllAppsVisible is true, got %v", data.VisibleApps)
 	}
 }
 
