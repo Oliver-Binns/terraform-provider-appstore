@@ -82,6 +82,7 @@ func (p *AppStoreConnectProvider) Configure(ctx context.Context, req provider.Co
 
 func (p *AppStoreConnectProvider) Resources(ctx context.Context) []func() resource.Resource {
 	return []func() resource.Resource{
+		NewDeviceResource,
 		NewUserResource,
 	}
 }
