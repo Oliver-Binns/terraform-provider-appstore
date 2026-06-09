@@ -16,7 +16,10 @@ import (
 )
 
 func TestAccBundleIDResource(t *testing.T) {
-	identifier := fmt.Sprintf("uk.co.oliverbinns.%s", uuid.New().String())
+	shortID := uuid.New().String()[:8]
+	identifier := fmt.Sprintf("uk.co.oliverbinns.%s", shortID)
+	name := fmt.Sprintf("Test App %s", shortID)
+	renamedName := fmt.Sprintf("Test App %s (renamed)", shortID)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
@@ -24,7 +27,7 @@ func TestAccBundleIDResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccBundleIDResourceConfig(identifier, "My Test App"),
+				Config: testAccBundleIDResourceConfig(identifier, name),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_bundle_id.test",
@@ -39,7 +42,7 @@ func TestAccBundleIDResource(t *testing.T) {
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_bundle_id.test",
 						tfjsonpath.New("name"),
-						knownvalue.StringExact("My Test App"),
+						knownvalue.StringExact(name),
 					),
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_bundle_id.test",
@@ -69,12 +72,12 @@ func TestAccBundleIDResource(t *testing.T) {
 			},
 			// Update name and read
 			{
-				Config: testAccBundleIDResourceConfig(identifier, "My Test App (renamed)"),
+				Config: testAccBundleIDResourceConfig(identifier, renamedName),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_bundle_id.test",
 						tfjsonpath.New("name"),
-						knownvalue.StringExact("My Test App (renamed)"),
+						knownvalue.StringExact(renamedName),
 					),
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_bundle_id.test",
