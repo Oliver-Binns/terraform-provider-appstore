@@ -71,7 +71,7 @@ func bundleIDPlanVal(s schema.Schema) tftypes.Value {
 		"id":         tftypes.NewValue(tftypes.String, ""),
 		"name":       tftypes.NewValue(tftypes.String, "My App"),
 		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
-		"platform":   tftypes.NewValue(tftypes.String, "IOS"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
 		"seed_id":    tftypes.NewValue(tftypes.String, nil),
 	})
 }
@@ -84,7 +84,7 @@ func TestBundleIDResource_Create_SetsStateCorrectly(t *testing.T) {
 					ID:         "bundle-uuid",
 					Name:       "My App",
 					Identifier: "com.example.myapp",
-					Platform:   openapi.IOS,
+					Platform:   openapi.Universal,
 					SeedID:     "ABCDE12345",
 				}, nil
 			},
@@ -119,7 +119,7 @@ func TestBundleIDResource_Create_SetsStateCorrectly(t *testing.T) {
 	if data.Identifier.ValueString() != "com.example.myapp" {
 		t.Errorf("expected Identifier 'com.example.myapp', got %q", data.Identifier.ValueString())
 	}
-	if data.Platform.ValueString() != "IOS" {
+	if data.Platform.ValueString() != "UNIVERSAL" {
 		t.Errorf("expected Platform 'IOS', got %q", data.Platform.ValueString())
 	}
 	if data.SeedID.ValueString() != "ABCDE12345" {
@@ -150,7 +150,7 @@ func TestBundleIDResource_Create_PassesSeedIDToClient(t *testing.T) {
 		"id":         tftypes.NewValue(tftypes.String, ""),
 		"name":       tftypes.NewValue(tftypes.String, "My App"),
 		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
-		"platform":   tftypes.NewValue(tftypes.String, "IOS"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
 		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
 	})
 
@@ -205,7 +205,7 @@ func TestBundleIDResource_Read_SetsStateCorrectly(t *testing.T) {
 					ID:         id,
 					Name:       "My App",
 					Identifier: "com.example.myapp",
-					Platform:   openapi.IOS,
+					Platform:   openapi.Universal,
 					SeedID:     "ABCDE12345",
 				}, nil
 			},
@@ -217,7 +217,7 @@ func TestBundleIDResource_Read_SetsStateCorrectly(t *testing.T) {
 		"id":         tftypes.NewValue(tftypes.String, "bundle-uuid"),
 		"name":       tftypes.NewValue(tftypes.String, "My App"),
 		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
-		"platform":   tftypes.NewValue(tftypes.String, "IOS"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
 		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
 	})
 
@@ -253,7 +253,7 @@ func TestBundleIDResource_Update_SetsNameCorrectly(t *testing.T) {
 					ID:         id,
 					Name:       bundleID.Name,
 					Identifier: "com.example.myapp",
-					Platform:   openapi.IOS,
+					Platform:   openapi.Universal,
 					SeedID:     "ABCDE12345",
 				}, nil
 			},
@@ -265,7 +265,7 @@ func TestBundleIDResource_Update_SetsNameCorrectly(t *testing.T) {
 		"id":         tftypes.NewValue(tftypes.String, "bundle-uuid"),
 		"name":       tftypes.NewValue(tftypes.String, "My App (renamed)"),
 		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
-		"platform":   tftypes.NewValue(tftypes.String, "IOS"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
 		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
 	})
 
@@ -308,7 +308,7 @@ func TestBundleIDResource_Delete_CallsDeleteOnClient(t *testing.T) {
 		"id":         tftypes.NewValue(tftypes.String, "bundle-uuid"),
 		"name":       tftypes.NewValue(tftypes.String, "My App"),
 		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
-		"platform":   tftypes.NewValue(tftypes.String, "IOS"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
 		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
 	})
 
@@ -341,7 +341,7 @@ func TestBundleIDResource_Delete_ReportsClientError(t *testing.T) {
 		"id":         tftypes.NewValue(tftypes.String, "bundle-uuid"),
 		"name":       tftypes.NewValue(tftypes.String, "My App"),
 		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
-		"platform":   tftypes.NewValue(tftypes.String, "IOS"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
 		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
 	})
 
@@ -370,7 +370,7 @@ func TestBundleIDResource_ImportState_ByIdentifier(t *testing.T) {
 					ID:         "bundle-uuid",
 					Name:       "My App",
 					Identifier: identifier,
-					Platform:   openapi.IOS,
+					Platform:   openapi.Universal,
 					SeedID:     "ABCDE12345",
 				}, nil
 			},
