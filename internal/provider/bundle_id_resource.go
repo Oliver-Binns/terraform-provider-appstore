@@ -73,11 +73,9 @@ func (r *BundleIDResource) Schema(ctx context.Context, req resource.SchemaReques
 				},
 			},
 			"platform": schema.StringAttribute{
-				Required:            true,
-				MarkdownDescription: "The platform for the bundle ID: `IOS`, `MAC_OS`, or `UNIVERSAL`. Immutable after creation.",
-				PlanModifiers: []planmodifier.String{
-					stringplanmodifier.RequiresReplace(),
-				},
+				Optional:            true,
+				Computed:            true,
+				MarkdownDescription: "The platform for the bundle ID: `IOS`, `MAC_OS`, or `UNIVERSAL`. Immutable after creation — the App Store Connect API may normalize the value (e.g. `IOS` becomes `UNIVERSAL`). To recreate with a different platform, remove and re-add the resource.",
 			},
 			"seed_id": schema.StringAttribute{
 				Optional:            true,
