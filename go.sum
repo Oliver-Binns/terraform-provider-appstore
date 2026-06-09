@@ -143,8 +143,8 @@ github.com/oapi-codegen/runtime v1.4.1 h1:9nwLoI+KrWxzbBcp0jO/R8uXqbik/HUyCvPeU6
 github.com/oapi-codegen/runtime v1.4.1/go.mod h1:GwV7hC2hviaMzj+ITfHVRESK5J2W/GefVwIND/bMGvU=
 github.com/oklog/run v1.0.0 h1:Ru7dDtJNOyC66gQ5dQmaCa0qIsAUFY3sFpK1Xk8igrw=
 github.com/oklog/run v1.0.0/go.mod h1:dlhp/R75TPv97u0XWUtDeV/lRKWPKSdTuV0TZvrmrQA=
-github.com/oliver-binns/appstore-go v0.0.0-20260609072855-50e6d646617d h1:Zky53220SckuBiGx561GY6M3tVvoOITJQnWh4fvUiBk=
-github.com/oliver-binns/appstore-go v0.0.0-20260609072855-50e6d646617d/go.mod h1:0eVZhf1bFX+d1/FVkN1Vp4wHYhxNLg3pYSwEadufXTU=
+github.com/oliver-binns/appstore-go v0.0.0-20260609101040-f7de438d95cd h1:Xnnpn8rsGHrRptRKdQl5CJin4gji7/cLqajyRHZI3ag=
+github.com/oliver-binns/appstore-go v0.0.0-20260609101040-f7de438d95cd/go.mod h1:0eVZhf1bFX+d1/FVkN1Vp4wHYhxNLg3pYSwEadufXTU=
 github.com/pjbgf/sha1cd v0.3.2 h1:a9wb0bp1oC2TGwStyn0Umc/IGKQnEgF0vVaZ8QF8eo4=
 github.com/pjbgf/sha1cd v0.3.2/go.mod h1:zQWigSxVmsHEZow5qaLtPYxpcKMMQpa09ixqBxuCS6A=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
