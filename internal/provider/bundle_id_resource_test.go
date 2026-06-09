@@ -44,7 +44,7 @@ func TestAccBundleIDResource(t *testing.T) {
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_bundle_id.test",
 						tfjsonpath.New("platform"),
-						knownvalue.StringExact("IOS"),
+						knownvalue.StringExact("UNIVERSAL"),
 					),
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_bundle_id.test",
@@ -93,7 +93,7 @@ func testAccBundleIDResourceConfig(identifier, name string) string {
 resource "appstoreconnect_bundle_id" "test" {
   identifier = %q
   name       = %q
-  platform   = "IOS"
+  platform   = "UNIVERSAL"
 }
 
 variable "issuer_id" {
