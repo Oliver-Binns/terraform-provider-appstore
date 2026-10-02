@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -24,6 +25,15 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &UserResource{}
 var _ resource.ResourceWithImportState = &UserResource{}
+
+// deleteRequestPropagationDelay accounts for eventual consistency in the App
+// Store Connect API: revoking a user invitation does not always immediately
+// release its email address for reuse. Terraform can call Delete and Create
+// back-to-back for the same email (e.g. when an unaccepted invitation's
+// attributes change, forcing a replace), which otherwise risks a 409
+// "email already in use" error from the subsequent create. It is a var
+// (rather than a const) so tests can shorten it.
+var deleteRequestPropagationDelay = 5 * time.Second
 
 type userClient interface {
 	GetUser(ctx context.Context, id string) (*users.User, error)
@@ -342,6 +352,11 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete user, got error: %s", err))
 		return
 	}
+
+	// Give Apple's backend time to release the email address before
+	// Terraform potentially attempts to recreate a resource using it
+	// (e.g. immediately after, as part of a destroy-then-create replace).
+	time.Sleep(deleteRequestPropagationDelay)
 }
 
 func (r *UserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
