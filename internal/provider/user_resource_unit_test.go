@@ -6,7 +6,9 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/diag"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -21,6 +23,7 @@ type mockUserClient struct {
 	getUserFn         func(ctx context.Context, id string) (*users.User, error)
 	modifyUserFn      func(ctx context.Context, id string, user users.User) (*users.User, error)
 	findUserByEmailFn func(ctx context.Context, email string) (*users.User, error)
+	deleteUserFn      func(ctx context.Context, id string) error
 }
 
 func (m *mockUserClient) GetUser(ctx context.Context, id string) (*users.User, error) {
@@ -42,6 +45,9 @@ func (m *mockUserClient) ModifyUser(ctx context.Context, id string, user users.U
 }
 
 func (m *mockUserClient) DeleteUser(ctx context.Context, id string) error {
+	if m.deleteUserFn != nil {
+		return m.deleteUserFn(ctx, id)
+	}
 	return nil
 }
 
@@ -231,6 +237,141 @@ func TestUserResource_Read_RemovesFromState_WhenIDAndEmailAreEmpty(t *testing.T)
 	}
 }
 
+func TestUserResource_Read_FallsBackToEmailLookup_WhenGetUserReturnsErrNotFound(t *testing.T) {
+	findCalled := false
+	r := &UserResource{
+		client: &mockUserClient{
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				return nil, fmt.Errorf("wrapped: %w", users.ErrNotFound)
+			},
+			findUserByEmailFn: func(ctx context.Context, email string) (*users.User, error) {
+				findCalled = true
+				return &users.User{
+					ID:        "new-user-id",
+					FirstName: "John",
+					LastName:  "Smith",
+					Username:  email,
+					Roles:     []users.UserRole{"DEVELOPER"},
+				}, nil
+			},
+		},
+	}
+
+	schema := userResourceSchema()
+	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, "stale-invitation-id"),
+		"first_name":           tftypes.NewValue(tftypes.String, nil),
+		"last_name":            tftypes.NewValue(tftypes.String, nil),
+		"email":                tftypes.NewValue(tftypes.String, "john@example.com"),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, nil),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, nil),
+	})
+
+	req := resource.ReadRequest{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+	resp := &resource.ReadResponse{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+
+	r.Read(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if !findCalled {
+		t.Fatal("expected FindUserByEmail to be called, but it was not")
+	}
+
+	var got UserResourceModel
+	resp.Diagnostics.Append(resp.State.Get(context.Background(), &got)...)
+	if got.ID.ValueString() != "new-user-id" {
+		t.Fatalf("expected state ID to be healed to %q, got %q", "new-user-id", got.ID.ValueString())
+	}
+}
+
+func TestUserResource_Read_RemovesFromState_WhenGetUserReturnsErrNotFound_AndNoMatchingEmail(t *testing.T) {
+	r := &UserResource{
+		client: &mockUserClient{
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				return nil, users.ErrNotFound
+			},
+			findUserByEmailFn: func(ctx context.Context, email string) (*users.User, error) {
+				return nil, nil
+			},
+		},
+	}
+
+	schema := userResourceSchema()
+	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, "stale-invitation-id"),
+		"first_name":           tftypes.NewValue(tftypes.String, nil),
+		"last_name":            tftypes.NewValue(tftypes.String, nil),
+		"email":                tftypes.NewValue(tftypes.String, "john@example.com"),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, nil),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, nil),
+	})
+
+	req := resource.ReadRequest{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+	resp := &resource.ReadResponse{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+
+	r.Read(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if !resp.State.Raw.IsNull() {
+		t.Fatal("expected resource to be removed from state, but state is not null")
+	}
+}
+
+func TestUserResource_ModifyPlan_SkipsReplaceCheck_WhenGetUserReturnsErrNotFound(t *testing.T) {
+	r := UserResource{
+		client: &mockUserClient{
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				return nil, users.ErrNotFound
+			},
+		},
+	}
+
+	schema := userResourceSchema()
+	val := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, "stale-invitation-id"),
+		"first_name":           tftypes.NewValue(tftypes.String, "John"),
+		"last_name":            tftypes.NewValue(tftypes.String, "Smith"),
+		"email":                tftypes.NewValue(tftypes.String, "john@example.com"),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, nil),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, nil),
+	})
+
+	req := resource.ModifyPlanRequest{
+		State: tfsdk.State{Schema: schema, Raw: val},
+		Plan:  tfsdk.Plan{Schema: schema, Raw: val},
+	}
+	resp := &resource.ModifyPlanResponse{
+		Plan: tfsdk.Plan{Schema: schema, Raw: val},
+	}
+
+	r.ModifyPlan(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if len(resp.RequiresReplace) != 0 {
+		t.Fatalf("expected no RequiresReplace paths, got %v", resp.RequiresReplace)
+	}
+}
+
 func userResourceSchema() schema.Schema {
 	r := &UserResource{}
 	schemaResp := &resource.SchemaResponse{}
@@ -417,5 +558,103 @@ func TestUserResource_Update_DoesNotSendReadOnlyFields(t *testing.T) {
 	}
 	if capturedUser.Username != "" {
 		t.Errorf("expected Username to be empty in ModifyUser call, got %q", capturedUser.Username)
+	}
+}
+
+func TestUserResource_Delete_SleepsAfterSuccessfulDeleteToAvoidEmailReuseRace(t *testing.T) {
+	var deleteCalled bool
+
+	r := &UserResource{
+		client: &mockUserClient{
+			deleteUserFn: func(ctx context.Context, id string) error {
+				deleteCalled = true
+				return nil
+			},
+		},
+	}
+
+	// Use a short delay in the test so it runs quickly, while still
+	// exercising the real time.Sleep call made by Delete().
+	originalDelay := deleteRequestPropagationDelay
+	defer func() { deleteRequestPropagationDelay = originalDelay }()
+	deleteRequestPropagationDelay = 20 * time.Millisecond
+
+	schema := userResourceSchema()
+	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, "some-uuid"),
+		"first_name":           tftypes.NewValue(tftypes.String, "John"),
+		"last_name":            tftypes.NewValue(tftypes.String, "Smith"),
+		"email":                tftypes.NewValue(tftypes.String, "jsmith@example.com"),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{tftypes.NewValue(tftypes.String, "DEVELOPER")}),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, false),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{}),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, true),
+	})
+
+	req := resource.DeleteRequest{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+	resp := &resource.DeleteResponse{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+
+	start := time.Now()
+	r.Delete(context.Background(), req, resp)
+	elapsed := time.Since(start)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if !deleteCalled {
+		t.Fatal("expected DeleteUser to be called")
+	}
+	if elapsed < deleteRequestPropagationDelay {
+		t.Fatalf("expected Delete to wait at least %s after a successful DeleteUser call, took %s", deleteRequestPropagationDelay, elapsed)
+	}
+}
+
+func TestUserResource_Delete_DoesNotSleep_WhenDeleteUserFails(t *testing.T) {
+	r := &UserResource{
+		client: &mockUserClient{
+			deleteUserFn: func(ctx context.Context, id string) error {
+				return errors.New("API unavailable")
+			},
+		},
+	}
+
+	// Use a delay long enough that the test would clearly time out /
+	// visibly slow down if Delete() incorrectly slept on failure.
+	originalDelay := deleteRequestPropagationDelay
+	defer func() { deleteRequestPropagationDelay = originalDelay }()
+	deleteRequestPropagationDelay = time.Second
+
+	schema := userResourceSchema()
+	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, "some-uuid"),
+		"first_name":           tftypes.NewValue(tftypes.String, "John"),
+		"last_name":            tftypes.NewValue(tftypes.String, "Smith"),
+		"email":                tftypes.NewValue(tftypes.String, "jsmith@example.com"),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{tftypes.NewValue(tftypes.String, "DEVELOPER")}),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, false),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{}),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, true),
+	})
+
+	req := resource.DeleteRequest{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+	resp := &resource.DeleteResponse{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+
+	start := time.Now()
+	r.Delete(context.Background(), req, resp)
+	elapsed := time.Since(start)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected error diagnostic, got none")
+	}
+	if elapsed >= deleteRequestPropagationDelay {
+		t.Fatalf("expected Delete NOT to sleep when DeleteUser fails, took %s", elapsed)
 	}
 }

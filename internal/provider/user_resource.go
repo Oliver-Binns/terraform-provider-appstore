@@ -5,8 +5,10 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -24,6 +26,15 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &UserResource{}
 var _ resource.ResourceWithImportState = &UserResource{}
+
+// deleteRequestPropagationDelay accounts for eventual consistency in the App
+// Store Connect API: revoking a user invitation does not always immediately
+// release its email address for reuse. Terraform can call Delete and Create
+// back-to-back for the same email (e.g. when an unaccepted invitation's
+// attributes change, forcing a replace), which otherwise risks a 409
+// "email already in use" error from the subsequent create. It is a var
+// (rather than a const) so tests can shorten it.
+var deleteRequestPropagationDelay = 5 * time.Second
 
 type userClient interface {
 	GetUser(ctx context.Context, id string) (*users.User, error)
@@ -164,6 +175,13 @@ func (r UserResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanReq
 		// Check if the user has accepted their email invite yet:
 		user, err := r.client.GetUser(ctx, data.ID.ValueString())
 		if err != nil {
+			if errors.Is(err, users.ErrNotFound) {
+				// The tracked ID is stale (likely a consumed invitation).
+				// Read runs before ModifyPlan during a normal plan/apply and
+				// will have already re-resolved the user by email, so skip
+				// the invite-acceptance check rather than hard-failing here.
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Fetch error",
 				fmt.Sprintf("Unable to fetch state of user %s, got error: %s", data.ID.ValueString(), err),
@@ -242,22 +260,20 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		user, err := r.client.FindUserByEmail(ctx, data.Email.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to find user by email, got error: %s", err))
-			return
-		}
-		if user == nil {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		r.populateState(ctx, &data, user, resp.Diagnostics)
-		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		r.readByEmail(ctx, &data, resp)
 		return
 	}
 
 	user, err := r.client.GetUser(ctx, data.ID.ValueString())
 	if err != nil {
+		if errors.Is(err, users.ErrNotFound) {
+			// The tracked ID may be a user invitation that has since been
+			// accepted: App Store Connect assigns the user a new ID and
+			// consumes the invitation, so fall back to re-resolving by email
+			// instead of treating this as the user having been removed.
+			r.readByEmail(ctx, &data, resp)
+			return
+		}
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read user, got error: %s", err))
 		return
 	}
@@ -266,6 +282,22 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// readByEmail resolves a user by their email address, populating state if
+// found or removing the resource from state if they no longer exist.
+func (r *UserResource) readByEmail(ctx context.Context, data *UserResourceModel, resp *resource.ReadResponse) {
+	user, err := r.client.FindUserByEmail(ctx, data.Email.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to find user by email, got error: %s", err))
+		return
+	}
+	if user == nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	r.populateState(ctx, data, user, resp.Diagnostics)
+	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 
 func (r *UserResource) populateState(ctx context.Context, data *UserResourceModel, user *users.User, diags diag.Diagnostics) {
@@ -342,6 +374,11 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete user, got error: %s", err))
 		return
 	}
+
+	// Give Apple's backend time to release the email address before
+	// Terraform potentially attempts to recreate a resource using it
+	// (e.g. immediately after, as part of a destroy-then-create replace).
+	time.Sleep(deleteRequestPropagationDelay)
 }
 
 func (r *UserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
