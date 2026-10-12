@@ -26,7 +26,10 @@ type mockUserClient struct {
 }
 
 func (m *mockUserClient) GetUser(ctx context.Context, id string) (*users.User, error) {
-	return m.getUserFn(ctx, id)
+	if m.getUserFn != nil {
+		return m.getUserFn(ctx, id)
+	}
+	return &users.User{ID: id}, nil
 }
 
 func (m *mockUserClient) CreateUser(ctx context.Context, user users.User) (*users.User, error) {
@@ -152,15 +155,6 @@ func TestUserResource_Read_FallsBackToEmailLookup_WhenIDIsEmpty(t *testing.T) {
 }
 
 func TestUserResource_Read_RemovesFromState_WhenIDIsEmptyAndUserNotFound(t *testing.T) {
-	originalTimeout := userLookupRetryTimeout
-	originalPollInterval := userLookupRetryPollInterval
-	defer func() {
-		userLookupRetryTimeout = originalTimeout
-		userLookupRetryPollInterval = originalPollInterval
-	}()
-	userLookupRetryTimeout = 20 * time.Millisecond
-	userLookupRetryPollInterval = 5 * time.Millisecond
-
 	r := &UserResource{
 		client: &mockUserClient{
 			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
@@ -424,6 +418,13 @@ func TestUserResource_Create_SetsVisibleAppsNullWhenAllAppsVisible(t *testing.T)
 					VisibleAppIDs:  []string{},
 				}, nil
 			},
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				return &users.User{
+					ID:             id,
+					AllAppsVisible: true,
+					VisibleAppIDs:  []string{},
+				}, nil
+			},
 		},
 	}
 
@@ -457,6 +458,109 @@ func TestUserResource_Create_SetsVisibleAppsNullWhenAllAppsVisible(t *testing.T)
 
 	if !data.VisibleApps.IsNull() {
 		t.Errorf("expected VisibleApps to be null when AllAppsVisible is true, got %v", data.VisibleApps)
+	}
+}
+
+func TestUserResource_Create_WaitsUntilUserVisibleBeforeReturning(t *testing.T) {
+	var getUserCalls int
+
+	r := &UserResource{
+		client: &mockUserClient{
+			createUserFn: func(ctx context.Context, user users.User) (*users.User, error) {
+				return &users.User{ID: "new-uuid"}, nil
+			},
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				getUserCalls++
+				if getUserCalls < 3 {
+					return nil, users.ErrNotFound
+				}
+				return &users.User{ID: id}, nil
+			},
+		},
+	}
+
+	originalTimeout := userLookupRetryTimeout
+	originalPollInterval := userLookupRetryPollInterval
+	defer func() {
+		userLookupRetryTimeout = originalTimeout
+		userLookupRetryPollInterval = originalPollInterval
+	}()
+	userLookupRetryTimeout = time.Second
+	userLookupRetryPollInterval = 10 * time.Millisecond
+
+	schema := userResourceSchema()
+	planVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, ""),
+		"first_name":           tftypes.NewValue(tftypes.String, "Jo"),
+		"last_name":            tftypes.NewValue(tftypes.String, "Dubey"),
+		"email":                tftypes.NewValue(tftypes.String, "jodubey@example.com"),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{tftypes.NewValue(tftypes.String, "DEVELOPER")}),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, true),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, false),
+	})
+
+	req := resource.CreateRequest{
+		Plan: tfsdk.Plan{Schema: schema, Raw: planVal},
+	}
+	resp := &resource.CreateResponse{
+		State: tfsdk.State{Schema: schema, Raw: planVal},
+	}
+
+	r.Create(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if getUserCalls < 3 {
+		t.Fatalf("expected Create to poll GetUser until visible, got %d call(s)", getUserCalls)
+	}
+}
+
+func TestUserResource_Create_ErrorsWhenUserNeverBecomesVisible(t *testing.T) {
+	r := &UserResource{
+		client: &mockUserClient{
+			createUserFn: func(ctx context.Context, user users.User) (*users.User, error) {
+				return &users.User{ID: "new-uuid"}, nil
+			},
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				return nil, users.ErrNotFound
+			},
+		},
+	}
+
+	originalTimeout := userLookupRetryTimeout
+	originalPollInterval := userLookupRetryPollInterval
+	defer func() {
+		userLookupRetryTimeout = originalTimeout
+		userLookupRetryPollInterval = originalPollInterval
+	}()
+	userLookupRetryTimeout = 20 * time.Millisecond
+	userLookupRetryPollInterval = 5 * time.Millisecond
+
+	schema := userResourceSchema()
+	planVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, ""),
+		"first_name":           tftypes.NewValue(tftypes.String, "Jo"),
+		"last_name":            tftypes.NewValue(tftypes.String, "Dubey"),
+		"email":                tftypes.NewValue(tftypes.String, "jodubey@example.com"),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{tftypes.NewValue(tftypes.String, "DEVELOPER")}),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, true),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, false),
+	})
+
+	req := resource.CreateRequest{
+		Plan: tfsdk.Plan{Schema: schema, Raw: planVal},
+	}
+	resp := &resource.CreateResponse{
+		State: tfsdk.State{Schema: schema, Raw: planVal},
+	}
+
+	r.Create(context.Background(), req, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected error diagnostic, got none")
 	}
 }
 
@@ -558,8 +662,9 @@ func TestUserResource_Update_DoesNotSendReadOnlyFields(t *testing.T) {
 	}
 }
 
-func TestUserResource_Delete_SleepsAfterSuccessfulDeleteToAvoidEmailReuseRace(t *testing.T) {
+func TestUserResource_Delete_WaitsUntilUserDisappearsAfterSuccessfulDelete(t *testing.T) {
 	var deleteCalled bool
+	var getUserCalls int
 
 	r := &UserResource{
 		client: &mockUserClient{
@@ -567,14 +672,26 @@ func TestUserResource_Delete_SleepsAfterSuccessfulDeleteToAvoidEmailReuseRace(t 
 				deleteCalled = true
 				return nil
 			},
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				getUserCalls++
+				if getUserCalls < 3 {
+					return &users.User{ID: id}, nil
+				}
+				return nil, users.ErrNotFound
+			},
 		},
 	}
 
-	// Use a short delay in the test so it runs quickly, while still
-	// exercising the real time.Sleep call made by Delete().
-	originalDelay := deleteRequestPropagationDelay
-	defer func() { deleteRequestPropagationDelay = originalDelay }()
-	deleteRequestPropagationDelay = 20 * time.Millisecond
+	// Use a short poll interval in the test so it runs quickly, while still
+	// exercising the real retry loop made by Delete().
+	originalTimeout := userLookupRetryTimeout
+	originalPollInterval := userLookupRetryPollInterval
+	defer func() {
+		userLookupRetryTimeout = originalTimeout
+		userLookupRetryPollInterval = originalPollInterval
+	}()
+	userLookupRetryTimeout = time.Second
+	userLookupRetryPollInterval = 10 * time.Millisecond
 
 	schema := userResourceSchema()
 	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
@@ -595,9 +712,7 @@ func TestUserResource_Delete_SleepsAfterSuccessfulDeleteToAvoidEmailReuseRace(t 
 		State: tfsdk.State{Schema: schema, Raw: stateVal},
 	}
 
-	start := time.Now()
 	r.Delete(context.Background(), req, resp)
-	elapsed := time.Since(start)
 
 	if resp.Diagnostics.HasError() {
 		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
@@ -605,25 +720,31 @@ func TestUserResource_Delete_SleepsAfterSuccessfulDeleteToAvoidEmailReuseRace(t 
 	if !deleteCalled {
 		t.Fatal("expected DeleteUser to be called")
 	}
-	if elapsed < deleteRequestPropagationDelay {
-		t.Fatalf("expected Delete to wait at least %s after a successful DeleteUser call, took %s", deleteRequestPropagationDelay, elapsed)
+	if getUserCalls < 3 {
+		t.Fatalf("expected Delete to poll GetUser until not found, got %d call(s)", getUserCalls)
 	}
 }
 
-func TestUserResource_Delete_DoesNotSleep_WhenDeleteUserFails(t *testing.T) {
+func TestUserResource_Delete_ErrorsWhenUserNeverDisappears(t *testing.T) {
 	r := &UserResource{
 		client: &mockUserClient{
 			deleteUserFn: func(ctx context.Context, id string) error {
-				return errors.New("API unavailable")
+				return nil
+			},
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				return &users.User{ID: id}, nil
 			},
 		},
 	}
 
-	// Use a delay long enough that the test would clearly time out /
-	// visibly slow down if Delete() incorrectly slept on failure.
-	originalDelay := deleteRequestPropagationDelay
-	defer func() { deleteRequestPropagationDelay = originalDelay }()
-	deleteRequestPropagationDelay = time.Second
+	originalTimeout := userLookupRetryTimeout
+	originalPollInterval := userLookupRetryPollInterval
+	defer func() {
+		userLookupRetryTimeout = originalTimeout
+		userLookupRetryPollInterval = originalPollInterval
+	}()
+	userLookupRetryTimeout = 20 * time.Millisecond
+	userLookupRetryPollInterval = 5 * time.Millisecond
 
 	schema := userResourceSchema()
 	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
@@ -644,14 +765,53 @@ func TestUserResource_Delete_DoesNotSleep_WhenDeleteUserFails(t *testing.T) {
 		State: tfsdk.State{Schema: schema, Raw: stateVal},
 	}
 
-	start := time.Now()
 	r.Delete(context.Background(), req, resp)
-	elapsed := time.Since(start)
 
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected error diagnostic, got none")
 	}
-	if elapsed >= deleteRequestPropagationDelay {
-		t.Fatalf("expected Delete NOT to sleep when DeleteUser fails, took %s", elapsed)
+}
+
+func TestUserResource_Delete_DoesNotWait_WhenDeleteUserFails(t *testing.T) {
+	var getUserCalled bool
+
+	r := &UserResource{
+		client: &mockUserClient{
+			deleteUserFn: func(ctx context.Context, id string) error {
+				return errors.New("API unavailable")
+			},
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				getUserCalled = true
+				return nil, users.ErrNotFound
+			},
+		},
+	}
+
+	schema := userResourceSchema()
+	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, "some-uuid"),
+		"first_name":           tftypes.NewValue(tftypes.String, "John"),
+		"last_name":            tftypes.NewValue(tftypes.String, "Smith"),
+		"email":                tftypes.NewValue(tftypes.String, "jsmith@example.com"),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{tftypes.NewValue(tftypes.String, "DEVELOPER")}),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, false),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, []tftypes.Value{}),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, true),
+	})
+
+	req := resource.DeleteRequest{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+	resp := &resource.DeleteResponse{
+		State: tfsdk.State{Schema: schema, Raw: stateVal},
+	}
+
+	r.Delete(context.Background(), req, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected error diagnostic, got none")
+	}
+	if getUserCalled {
+		t.Fatal("expected Delete NOT to poll GetUser when DeleteUser fails")
 	}
 }

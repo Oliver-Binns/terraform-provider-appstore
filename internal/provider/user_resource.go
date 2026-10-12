@@ -28,15 +28,6 @@ import (
 var _ resource.Resource = &UserResource{}
 var _ resource.ResourceWithImportState = &UserResource{}
 
-// deleteRequestPropagationDelay accounts for eventual consistency in the App
-// Store Connect API: revoking a user invitation does not always immediately
-// release its email address for reuse. Terraform can call Delete and Create
-// back-to-back for the same email (e.g. when an unaccepted invitation's
-// attributes change, forcing a replace), which otherwise risks a 409
-// "email already in use" error from the subsequent create. It is a var
-// (rather than a const) so tests can shorten it.
-var deleteRequestPropagationDelay = 5 * time.Second
-
 // userLookupRetryTimeout and userLookupRetryPollInterval account for
 // eventual consistency in the App Store Connect API: a user invitation
 // created or replaced moments ago may not be immediately resolvable via
@@ -89,6 +80,35 @@ func waitForUser(ctx context.Context, lookup func() (*users.User, error)) (*user
 		return nil, fmt.Errorf("unexpected type %T returned while waiting for user", result)
 	}
 	return user, nil
+}
+
+// waitForUserDeleted polls lookup until it reports the user as not found
+// (users.ErrNotFound), tolerating eventual consistency in the App Store
+// Connect API: revoking a user invitation does not always immediately
+// release its email address for reuse, which otherwise risks a 409 "email
+// already in use" error if Terraform immediately recreates a resource using
+// the same email (e.g. as part of a destroy-then-create replace). Any other
+// error from lookup is returned immediately, unretried.
+func waitForUserDeleted(ctx context.Context, lookup func() (*users.User, error)) error {
+	stateConf := &retry.StateChangeConf{
+		Pending: []string{"found"},
+		Target:  []string{"deleted"},
+		Refresh: func() (interface{}, string, error) {
+			_, err := lookup()
+			if err != nil {
+				if errors.Is(err, users.ErrNotFound) {
+					return struct{}{}, "deleted", nil
+				}
+				return nil, "", err
+			}
+			return struct{}{}, "found", nil
+		},
+		Timeout:    userLookupRetryTimeout,
+		MinTimeout: userLookupRetryPollInterval,
+	}
+
+	_, err := stateConf.WaitForStateContext(ctx)
+	return err
 }
 
 type userClient interface {
@@ -228,9 +248,7 @@ func (r UserResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanReq
 		resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 
 		// Check if the user has accepted their email invite yet:
-		user, err := waitForUser(ctx, func() (*users.User, error) {
-			return r.client.GetUser(ctx, data.ID.ValueString())
-		})
+		user, err := r.client.GetUser(ctx, data.ID.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Fetch error",
@@ -288,6 +306,20 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	tflog.Trace(ctx, "created a new user")
 
+	// Wait for the newly created user to become visible via GetUser before
+	// returning: the App Store Connect API is eventually consistent, and
+	// Terraform's implicit post-apply refresh (Read/ModifyPlan) can
+	// otherwise see a stale 404 moments after a successful create. Use the
+	// confirmed GetUser response to populate state, so it matches what a
+	// subsequent Read will see.
+	user, err = waitForUser(ctx, func() (*users.User, error) {
+		return r.client.GetUser(ctx, user.ID)
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("User was created but did not become visible in time: %s", err))
+		return
+	}
+
 	r.populateState(ctx, &data, user, resp.Diagnostics)
 
 	// Save data into Terraform state
@@ -310,9 +342,7 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		user, err := waitForUser(ctx, func() (*users.User, error) {
-			return r.client.FindUserByEmail(ctx, data.Email.ValueString())
-		})
+		user, err := r.client.FindUserByEmail(ctx, data.Email.ValueString())
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to find user by email, got error: %s", err))
 			return
@@ -326,9 +356,7 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	user, err := waitForUser(ctx, func() (*users.User, error) {
-		return r.client.GetUser(ctx, data.ID.ValueString())
-	})
+	user, err := r.client.GetUser(ctx, data.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read user, got error: %s", err))
 		return
@@ -415,10 +443,17 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
-	// Give Apple's backend time to release the email address before
-	// Terraform potentially attempts to recreate a resource using it
-	// (e.g. immediately after, as part of a destroy-then-create replace).
-	time.Sleep(deleteRequestPropagationDelay)
+	// Wait for the deletion to propagate before returning: Apple's backend
+	// does not always immediately release the user's email address for
+	// reuse, and Terraform can call Delete and Create back-to-back for the
+	// same email (e.g. when an unaccepted invitation's attributes change,
+	// forcing a replace).
+	if err := waitForUserDeleted(ctx, func() (*users.User, error) {
+		return r.client.GetUser(ctx, data.ID.ValueString())
+	}); err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("User was deleted but did not disappear from the API in time: %s", err))
+		return
+	}
 }
 
 func (r *UserResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
