@@ -36,6 +36,40 @@ var _ resource.ResourceWithImportState = &UserResource{}
 var userLookupRetryTimeout = 30 * time.Second
 var userLookupRetryPollInterval = 2 * time.Second
 
+// userFoundState and userNotFoundState label the two states a user lookup
+// can resolve to, shared by waitForUser (polls until found) and
+// waitForUserDeleted (polls until not found).
+const (
+	userFoundState    = "found"
+	userNotFoundState = "not-found"
+)
+
+// classifyUserLookup adapts lookup into a retry.StateChangeConf Refresh
+// function, tagging each result as userFoundState or userNotFoundState.
+// Not-found is recognised two ways, matching callers' existing
+// conventions: a GetUser-style lookup returning users.ErrNotFound, or a
+// FindUserByEmail-style lookup returning (nil, nil). lastErr records the
+// most recent not-found error (nil for the FindUserByEmail convention) so
+// waitForUser can restore the exact not-found signal once retries are
+// exhausted. Any other error is surfaced immediately, unretried.
+func classifyUserLookup(lookup func() (*users.User, error), lastErr *error) func() (interface{}, string, error) {
+	return func() (interface{}, string, error) {
+		user, err := lookup()
+		if err != nil {
+			if errors.Is(err, users.ErrNotFound) {
+				*lastErr = err
+				return struct{}{}, userNotFoundState, nil
+			}
+			return nil, "", err
+		}
+		if user == nil {
+			*lastErr = nil
+			return struct{}{}, userNotFoundState, nil
+		}
+		return user, userFoundState, nil
+	}
+}
+
 // waitForUser retries lookup while it reports the user as not found,
 // tolerating eventual consistency in the App Store Connect API, up to
 // userLookupRetryTimeout. It preserves the exact not-found signal callers
@@ -46,23 +80,9 @@ var userLookupRetryPollInterval = 2 * time.Second
 func waitForUser(ctx context.Context, lookup func() (*users.User, error)) (*users.User, error) {
 	var lastErr error
 	stateConf := &retry.StateChangeConf{
-		Pending: []string{"pending"},
-		Target:  []string{"found"},
-		Refresh: func() (interface{}, string, error) {
-			user, err := lookup()
-			if err != nil {
-				if errors.Is(err, users.ErrNotFound) {
-					lastErr = err
-					return nil, "pending", nil
-				}
-				return nil, "", err
-			}
-			if user == nil {
-				lastErr = nil
-				return nil, "pending", nil
-			}
-			return user, "found", nil
-		},
+		Pending:    []string{userNotFoundState},
+		Target:     []string{userFoundState},
+		Refresh:    classifyUserLookup(lookup, &lastErr),
 		Timeout:    userLookupRetryTimeout,
 		MinTimeout: userLookupRetryPollInterval,
 	}
@@ -90,19 +110,11 @@ func waitForUser(ctx context.Context, lookup func() (*users.User, error)) (*user
 // the same email (e.g. as part of a destroy-then-create replace). Any other
 // error from lookup is returned immediately, unretried.
 func waitForUserDeleted(ctx context.Context, lookup func() (*users.User, error)) error {
+	var lastErr error
 	stateConf := &retry.StateChangeConf{
-		Pending: []string{"found"},
-		Target:  []string{"deleted"},
-		Refresh: func() (interface{}, string, error) {
-			_, err := lookup()
-			if err != nil {
-				if errors.Is(err, users.ErrNotFound) {
-					return struct{}{}, "deleted", nil
-				}
-				return nil, "", err
-			}
-			return struct{}{}, "found", nil
-		},
+		Pending:    []string{userFoundState},
+		Target:     []string{userNotFoundState},
+		Refresh:    classifyUserLookup(lookup, &lastErr),
 		Timeout:    userLookupRetryTimeout,
 		MinTimeout: userLookupRetryPollInterval,
 	}
