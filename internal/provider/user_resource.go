@@ -26,21 +26,14 @@ import (
 var _ resource.Resource = &UserResource{}
 var _ resource.ResourceWithImportState = &UserResource{}
 
-// waitForUser retries lookup while it reports the user as not found,
-// tolerating eventual consistency in the App Store Connect API. It
-// preserves the exact not-found signal callers already expect: a
-// GetUser-style lookup returning users.ErrNotFound still returns that
-// error once retries are exhausted; a FindUserByEmail-style lookup
-// returning (nil, nil) still returns (nil, nil).
+// waitForUser wraps waitForResource for users.ErrNotFound.
 func waitForUser(ctx context.Context, lookup func() (*users.User, error)) (*users.User, error) {
 	return waitForResource(ctx, lookup, func(err error) bool {
 		return errors.Is(err, users.ErrNotFound)
 	})
 }
 
-// waitForUserDeleted polls lookup until the user is not found, tolerating
-// eventual consistency after Delete (so an immediate recreate using the
-// same email doesn't 409).
+// waitForUserDeleted wraps waitForResourceDeleted for users.ErrNotFound.
 func waitForUserDeleted(ctx context.Context, lookup func() (*users.User, error)) error {
 	return waitForResourceDeleted(ctx, lookup, func(err error) bool {
 		return errors.Is(err, users.ErrNotFound)
@@ -242,12 +235,7 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	tflog.Trace(ctx, "created a new user")
 
-	// Wait for the newly created user to become visible via GetUser before
-	// returning: the App Store Connect API is eventually consistent, and
-	// Terraform's implicit post-apply refresh (Read/ModifyPlan) can
-	// otherwise see a stale 404 moments after a successful create. Use the
-	// confirmed GetUser response to populate state, so it matches what a
-	// subsequent Read will see.
+	// Wait for eventual consistency before the implicit post-apply refresh reads this back.
 	user, err = waitForUser(ctx, func() (*users.User, error) {
 		return r.client.GetUser(ctx, user.ID)
 	})
@@ -379,11 +367,7 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 		return
 	}
 
-	// Wait for the deletion to propagate before returning: Apple's backend
-	// does not always immediately release the user's email address for
-	// reuse, and Terraform can call Delete and Create back-to-back for the
-	// same email (e.g. when an unaccepted invitation's attributes change,
-	// forcing a replace).
+	// Wait so an immediate recreate (e.g. forced replace) doesn't 409 on the reused email.
 	if err := waitForUserDeleted(ctx, func() (*users.User, error) {
 		return r.client.GetUser(ctx, data.ID.ValueString())
 	}); err != nil {
