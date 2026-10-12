@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
@@ -88,6 +89,15 @@ func TestBundleIDResource_Create_SetsStateCorrectly(t *testing.T) {
 					SeedID:     "ABCDE12345",
 				}, nil
 			},
+			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
+				return &bundleids.BundleID{
+					ID:         "bundle-uuid",
+					Name:       "My App",
+					Identifier: "com.example.myapp",
+					Platform:   openapi.Universal,
+					SeedID:     "ABCDE12345",
+				}, nil
+			},
 		},
 	}
 
@@ -142,6 +152,15 @@ func TestBundleIDResource_Create_PassesSeedIDToClient(t *testing.T) {
 					SeedID:     bundleID.SeedID,
 				}, nil
 			},
+			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
+				return &bundleids.BundleID{
+					ID:         "bundle-uuid",
+					Name:       "My App",
+					Identifier: "com.example.myapp",
+					Platform:   openapi.Universal,
+					SeedID:     "ABCDE12345",
+				}, nil
+			},
 		},
 	}
 
@@ -194,6 +213,91 @@ func TestBundleIDResource_Create_ReportsClientError(t *testing.T) {
 
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected error diagnostics, got none")
+	}
+}
+
+func TestBundleIDResource_Create_WaitsUntilBundleIDVisibleBeforeReturning(t *testing.T) {
+	var getBundleIDCalls int
+
+	r := &BundleIDResource{
+		client: &mockBundleIDClient{
+			createBundleIDFn: func(ctx context.Context, bundleID bundleids.BundleID) (*bundleids.BundleID, error) {
+				return &bundleids.BundleID{ID: "bundle-uuid"}, nil
+			},
+			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
+				getBundleIDCalls++
+				if getBundleIDCalls < 3 {
+					return nil, bundleids.ErrNotFound
+				}
+				return &bundleids.BundleID{ID: id}, nil
+			},
+		},
+	}
+
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
+	defer func() {
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
+	}()
+	apiLookupRetryTimeout = time.Second
+	apiLookupRetryPollInterval = 10 * time.Millisecond
+
+	s := bundleIDResourceSchema()
+	planVal := bundleIDPlanVal(s)
+
+	req := resource.CreateRequest{
+		Plan: tfsdk.Plan{Schema: s, Raw: planVal},
+	}
+	resp := &resource.CreateResponse{
+		State: tfsdk.State{Schema: s, Raw: planVal},
+	}
+
+	r.Create(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if getBundleIDCalls < 3 {
+		t.Fatalf("expected Create to poll GetBundleID until visible, got %d call(s)", getBundleIDCalls)
+	}
+}
+
+func TestBundleIDResource_Create_ErrorsWhenBundleIDNeverBecomesVisible(t *testing.T) {
+	r := &BundleIDResource{
+		client: &mockBundleIDClient{
+			createBundleIDFn: func(ctx context.Context, bundleID bundleids.BundleID) (*bundleids.BundleID, error) {
+				return &bundleids.BundleID{ID: "bundle-uuid"}, nil
+			},
+			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
+				return nil, bundleids.ErrNotFound
+			},
+		},
+	}
+
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
+	defer func() {
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
+	}()
+	apiLookupRetryTimeout = 20 * time.Millisecond
+	apiLookupRetryPollInterval = 5 * time.Millisecond
+
+	s := bundleIDResourceSchema()
+	planVal := bundleIDPlanVal(s)
+
+	req := resource.CreateRequest{
+		Plan: tfsdk.Plan{Schema: s, Raw: planVal},
+	}
+	resp := &resource.CreateResponse{
+		State: tfsdk.State{Schema: s, Raw: planVal},
+	}
+
+	r.Create(context.Background(), req, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected error diagnostic, got none")
 	}
 }
 
@@ -300,6 +404,9 @@ func TestBundleIDResource_Delete_CallsDeleteOnClient(t *testing.T) {
 				capturedID = id
 				return nil
 			},
+			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
+				return nil, bundleids.ErrNotFound
+			},
 		},
 	}
 
@@ -354,6 +461,143 @@ func TestBundleIDResource_Delete_ReportsClientError(t *testing.T) {
 
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected error diagnostics, got none")
+	}
+}
+
+func TestBundleIDResource_Delete_WaitsUntilBundleIDDisappearsAfterSuccessfulDelete(t *testing.T) {
+	var deleteCalled bool
+	var getBundleIDCalls int
+
+	r := &BundleIDResource{
+		client: &mockBundleIDClient{
+			deleteBundleIDFn: func(ctx context.Context, id string) error {
+				deleteCalled = true
+				return nil
+			},
+			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
+				getBundleIDCalls++
+				if getBundleIDCalls < 3 {
+					return &bundleids.BundleID{ID: id}, nil
+				}
+				return nil, bundleids.ErrNotFound
+			},
+		},
+	}
+
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
+	defer func() {
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
+	}()
+	apiLookupRetryTimeout = time.Second
+	apiLookupRetryPollInterval = 10 * time.Millisecond
+
+	s := bundleIDResourceSchema()
+	stateVal := tftypes.NewValue(s.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":         tftypes.NewValue(tftypes.String, "bundle-uuid"),
+		"name":       tftypes.NewValue(tftypes.String, "My App"),
+		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
+		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
+	})
+
+	req := resource.DeleteRequest{
+		State: tfsdk.State{Schema: s, Raw: stateVal},
+	}
+	resp := &resource.DeleteResponse{}
+
+	r.Delete(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if !deleteCalled {
+		t.Fatal("expected DeleteBundleID to be called")
+	}
+	if getBundleIDCalls < 3 {
+		t.Fatalf("expected Delete to poll GetBundleID until not found, got %d call(s)", getBundleIDCalls)
+	}
+}
+
+func TestBundleIDResource_Delete_ErrorsWhenBundleIDNeverDisappears(t *testing.T) {
+	r := &BundleIDResource{
+		client: &mockBundleIDClient{
+			deleteBundleIDFn: func(ctx context.Context, id string) error {
+				return nil
+			},
+			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
+				return &bundleids.BundleID{ID: id}, nil
+			},
+		},
+	}
+
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
+	defer func() {
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
+	}()
+	apiLookupRetryTimeout = 20 * time.Millisecond
+	apiLookupRetryPollInterval = 5 * time.Millisecond
+
+	s := bundleIDResourceSchema()
+	stateVal := tftypes.NewValue(s.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":         tftypes.NewValue(tftypes.String, "bundle-uuid"),
+		"name":       tftypes.NewValue(tftypes.String, "My App"),
+		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
+		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
+	})
+
+	req := resource.DeleteRequest{
+		State: tfsdk.State{Schema: s, Raw: stateVal},
+	}
+	resp := &resource.DeleteResponse{}
+
+	r.Delete(context.Background(), req, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected error diagnostic, got none")
+	}
+}
+
+func TestBundleIDResource_Delete_DoesNotWait_WhenDeleteBundleIDFails(t *testing.T) {
+	var getBundleIDCalled bool
+
+	r := &BundleIDResource{
+		client: &mockBundleIDClient{
+			deleteBundleIDFn: func(ctx context.Context, id string) error {
+				return errors.New("API unavailable")
+			},
+			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
+				getBundleIDCalled = true
+				return nil, bundleids.ErrNotFound
+			},
+		},
+	}
+
+	s := bundleIDResourceSchema()
+	stateVal := tftypes.NewValue(s.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":         tftypes.NewValue(tftypes.String, "bundle-uuid"),
+		"name":       tftypes.NewValue(tftypes.String, "My App"),
+		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
+		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
+	})
+
+	req := resource.DeleteRequest{
+		State: tfsdk.State{Schema: s, Raw: stateVal},
+	}
+	resp := &resource.DeleteResponse{}
+
+	r.Delete(context.Background(), req, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected error diagnostic, got none")
+	}
+	if getBundleIDCalled {
+		t.Fatal("expected Delete NOT to poll GetBundleID when DeleteBundleID fails")
 	}
 }
 
