@@ -58,3 +58,6 @@ Use a single Conventional Commits summary line; avoid multi-paragraph commit bod
 
 ### Keep doc comments terse
 One short line of essential, non-obvious context. Skip comments that restate the code.
+
+### Update documentation with every change
+When adding or changing resources, attributes or behaviour, update `README.md` and `examples/` in the same PR, then run `make generate` and commit the regenerated `docs/`. Update this file if conventions or architecture change.
