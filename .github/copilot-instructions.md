@@ -49,3 +49,6 @@ All PR titles must follow [Conventional Commits](https://www.conventionalcommits
 ```shell
 git config core.hooksPath hooks
 ```
+
+### Keep commit messages concise
+Use a single Conventional Commits summary line; avoid multi-paragraph commit bodies unless essential context would otherwise be lost.
