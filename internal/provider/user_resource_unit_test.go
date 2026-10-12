@@ -152,6 +152,15 @@ func TestUserResource_Read_FallsBackToEmailLookup_WhenIDIsEmpty(t *testing.T) {
 }
 
 func TestUserResource_Read_RemovesFromState_WhenIDIsEmptyAndUserNotFound(t *testing.T) {
+	originalTimeout := userLookupRetryTimeout
+	originalPollInterval := userLookupRetryPollInterval
+	defer func() {
+		userLookupRetryTimeout = originalTimeout
+		userLookupRetryPollInterval = originalPollInterval
+	}()
+	userLookupRetryTimeout = 20 * time.Millisecond
+	userLookupRetryPollInterval = 5 * time.Millisecond
+
 	r := &UserResource{
 		client: &mockUserClient{
 			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
@@ -233,6 +242,130 @@ func TestUserResource_Read_RemovesFromState_WhenIDAndEmailAreEmpty(t *testing.T)
 	}
 	if !resp.State.Raw.IsNull() {
 		t.Fatal("expected resource to be removed from state, but state is not null")
+	}
+}
+
+func TestWaitForUser_RetriesUntilFound(t *testing.T) {
+	originalTimeout := userLookupRetryTimeout
+	originalPollInterval := userLookupRetryPollInterval
+	defer func() {
+		userLookupRetryTimeout = originalTimeout
+		userLookupRetryPollInterval = originalPollInterval
+	}()
+	userLookupRetryTimeout = time.Second
+	userLookupRetryPollInterval = 10 * time.Millisecond
+
+	callCount := 0
+	user, err := waitForUser(context.Background(), func() (*users.User, error) {
+		callCount++
+		if callCount < 3 {
+			return nil, users.ErrNotFound
+		}
+		return &users.User{ID: "found-id"}, nil
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if callCount != 3 {
+		t.Fatalf("expected lookup to be retried until it succeeded (3 calls), got %d calls", callCount)
+	}
+	if user == nil || user.ID != "found-id" {
+		t.Fatalf("expected to find user with ID %q, got %+v", "found-id", user)
+	}
+}
+
+func TestWaitForUser_RetriesEmailLookupUntilFound(t *testing.T) {
+	originalTimeout := userLookupRetryTimeout
+	originalPollInterval := userLookupRetryPollInterval
+	defer func() {
+		userLookupRetryTimeout = originalTimeout
+		userLookupRetryPollInterval = originalPollInterval
+	}()
+	userLookupRetryTimeout = time.Second
+	userLookupRetryPollInterval = 10 * time.Millisecond
+
+	callCount := 0
+	user, err := waitForUser(context.Background(), func() (*users.User, error) {
+		callCount++
+		if callCount < 3 {
+			return nil, nil // FindUserByEmail's not-found convention
+		}
+		return &users.User{ID: "found-id"}, nil
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if callCount != 3 {
+		t.Fatalf("expected lookup to be retried until it succeeded (3 calls), got %d calls", callCount)
+	}
+	if user == nil || user.ID != "found-id" {
+		t.Fatalf("expected to find user with ID %q, got %+v", "found-id", user)
+	}
+}
+
+func TestWaitForUser_ReturnsErrNotFound_WhenRetriesExhausted(t *testing.T) {
+	originalTimeout := userLookupRetryTimeout
+	originalPollInterval := userLookupRetryPollInterval
+	defer func() {
+		userLookupRetryTimeout = originalTimeout
+		userLookupRetryPollInterval = originalPollInterval
+	}()
+	userLookupRetryTimeout = 20 * time.Millisecond
+	userLookupRetryPollInterval = 5 * time.Millisecond
+
+	user, err := waitForUser(context.Background(), func() (*users.User, error) {
+		return nil, users.ErrNotFound
+	})
+
+	if !errors.Is(err, users.ErrNotFound) {
+		t.Fatalf("expected users.ErrNotFound once retries are exhausted, got %v", err)
+	}
+	if user != nil {
+		t.Fatalf("expected nil user, got %+v", user)
+	}
+}
+
+func TestWaitForUser_ReturnsNilNil_WhenEmailLookupNeverFinds(t *testing.T) {
+	originalTimeout := userLookupRetryTimeout
+	originalPollInterval := userLookupRetryPollInterval
+	defer func() {
+		userLookupRetryTimeout = originalTimeout
+		userLookupRetryPollInterval = originalPollInterval
+	}()
+	userLookupRetryTimeout = 20 * time.Millisecond
+	userLookupRetryPollInterval = 5 * time.Millisecond
+
+	user, err := waitForUser(context.Background(), func() (*users.User, error) {
+		return nil, nil
+	})
+
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if user != nil {
+		t.Fatalf("expected nil user, got %+v", user)
+	}
+}
+
+func TestWaitForUser_ReturnsNonNotFoundErrorImmediately(t *testing.T) {
+	originalTimeout := userLookupRetryTimeout
+	defer func() { userLookupRetryTimeout = originalTimeout }()
+	userLookupRetryTimeout = time.Minute // would hang the test if not returned immediately
+
+	callCount := 0
+	wantErr := errors.New("API unavailable")
+	_, err := waitForUser(context.Background(), func() (*users.User, error) {
+		callCount++
+		return nil, wantErr
+	})
+
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("expected %v, got %v", wantErr, err)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected lookup to be called exactly once (no retry) for a non-not-found error, got %d calls", callCount)
 	}
 }
 

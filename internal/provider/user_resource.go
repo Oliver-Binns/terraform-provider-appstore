@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
+	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/oliver-binns/appstore-go"
 	"github.com/oliver-binns/appstore-go/users"
 )
@@ -34,6 +36,60 @@ var _ resource.ResourceWithImportState = &UserResource{}
 // "email already in use" error from the subsequent create. It is a var
 // (rather than a const) so tests can shorten it.
 var deleteRequestPropagationDelay = 5 * time.Second
+
+// userLookupRetryTimeout and userLookupRetryPollInterval account for
+// eventual consistency in the App Store Connect API: a user invitation
+// created or replaced moments ago may not be immediately resolvable via
+// GetUser or FindUserByEmail. They are vars (rather than consts) so tests
+// can shorten them.
+var userLookupRetryTimeout = 30 * time.Second
+var userLookupRetryPollInterval = 2 * time.Second
+
+// waitForUser retries lookup while it reports the user as not found,
+// tolerating eventual consistency in the App Store Connect API, up to
+// userLookupRetryTimeout. It preserves the exact not-found signal callers
+// already expect: a GetUser-style lookup that keeps returning
+// users.ErrNotFound still returns that error once retries are exhausted; a
+// FindUserByEmail-style lookup that keeps returning (nil, nil) still
+// returns (nil, nil). Any other error is returned immediately, unretried.
+func waitForUser(ctx context.Context, lookup func() (*users.User, error)) (*users.User, error) {
+	var lastErr error
+	stateConf := &retry.StateChangeConf{
+		Pending: []string{"pending"},
+		Target:  []string{"found"},
+		Refresh: func() (interface{}, string, error) {
+			user, err := lookup()
+			if err != nil {
+				if errors.Is(err, users.ErrNotFound) {
+					lastErr = err
+					return nil, "pending", nil
+				}
+				return nil, "", err
+			}
+			if user == nil {
+				lastErr = nil
+				return nil, "pending", nil
+			}
+			return user, "found", nil
+		},
+		Timeout:    userLookupRetryTimeout,
+		MinTimeout: userLookupRetryPollInterval,
+	}
+
+	result, err := stateConf.WaitForStateContext(ctx)
+	if err != nil {
+		var timeoutErr *retry.TimeoutError
+		if errors.As(err, &timeoutErr) {
+			return nil, lastErr
+		}
+		return nil, err
+	}
+	user, ok := result.(*users.User)
+	if !ok {
+		return nil, fmt.Errorf("unexpected type %T returned while waiting for user", result)
+	}
+	return user, nil
+}
 
 type userClient interface {
 	GetUser(ctx context.Context, id string) (*users.User, error)
@@ -172,7 +228,9 @@ func (r UserResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanReq
 		resp.Diagnostics.Append(req.State.Get(ctx, &data)...)
 
 		// Check if the user has accepted their email invite yet:
-		user, err := r.client.GetUser(ctx, data.ID.ValueString())
+		user, err := waitForUser(ctx, func() (*users.User, error) {
+			return r.client.GetUser(ctx, data.ID.ValueString())
+		})
 		if err != nil {
 			resp.Diagnostics.AddError(
 				"Fetch error",
@@ -252,7 +310,9 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		user, err := r.client.FindUserByEmail(ctx, data.Email.ValueString())
+		user, err := waitForUser(ctx, func() (*users.User, error) {
+			return r.client.FindUserByEmail(ctx, data.Email.ValueString())
+		})
 		if err != nil {
 			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to find user by email, got error: %s", err))
 			return
@@ -266,7 +326,9 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 		return
 	}
 
-	user, err := r.client.GetUser(ctx, data.ID.ValueString())
+	user, err := waitForUser(ctx, func() (*users.User, error) {
+		return r.client.GetUser(ctx, data.ID.ValueString())
+	})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read user, got error: %s", err))
 		return
