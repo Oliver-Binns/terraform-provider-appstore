@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -24,6 +25,20 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &UserResource{}
 var _ resource.ResourceWithImportState = &UserResource{}
+
+// waitForUser wraps waitForResource for users.ErrNotFound.
+func waitForUser(ctx context.Context, lookup func() (*users.User, error)) (*users.User, error) {
+	return waitForResource(ctx, lookup, func(err error) bool {
+		return errors.Is(err, users.ErrNotFound)
+	})
+}
+
+// waitForUserDeleted wraps waitForResourceDeleted for users.ErrNotFound.
+func waitForUserDeleted(ctx context.Context, lookup func() (*users.User, error)) error {
+	return waitForResourceDeleted(ctx, lookup, func(err error) bool {
+		return errors.Is(err, users.ErrNotFound)
+	})
+}
 
 type userClient interface {
 	GetUser(ctx context.Context, id string) (*users.User, error)
@@ -220,6 +235,15 @@ func (r *UserResource) Create(ctx context.Context, req resource.CreateRequest, r
 
 	tflog.Trace(ctx, "created a new user")
 
+	// Wait for eventual consistency before the implicit post-apply refresh reads this back.
+	user, err = waitForUser(ctx, func() (*users.User, error) {
+		return r.client.GetUser(ctx, user.ID)
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("User was created but did not become visible in time: %s", err))
+		return
+	}
+
 	r.populateState(ctx, &data, user, resp.Diagnostics)
 
 	// Save data into Terraform state
@@ -340,6 +364,14 @@ func (r *UserResource) Delete(ctx context.Context, req resource.DeleteRequest, r
 	err := r.client.DeleteUser(ctx, data.ID.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete user, got error: %s", err))
+		return
+	}
+
+	// Wait so an immediate recreate (e.g. forced replace) doesn't 409 on the reused email.
+	if err := waitForUserDeleted(ctx, func() (*users.User, error) {
+		return r.client.GetUser(ctx, data.ID.ValueString())
+	}); err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("User was deleted but did not disappear from the API in time: %s", err))
 		return
 	}
 }
