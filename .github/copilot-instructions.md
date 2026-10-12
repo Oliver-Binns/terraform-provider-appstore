@@ -45,10 +45,7 @@ Config-level validation (e.g. `all_apps_visible = true` must not be combined wit
 `ModifyPlan` detects when a user hasn't accepted their invite yet and marks all attributes as requiring replacement, with a warning diagnostic.
 
 ### Handle API eventual consistency with waiters, not sleeps in Read/ModifyPlan
-The App Store Connect API is eventually consistent: a resource just created may 404 for a few seconds, and a resource just deleted may still cause "already in use" errors on immediate recreate. When writing a new resource's `Create`/`Delete` (and `Update` if it can change identity-affecting fields):
-- After the mutating API call succeeds, poll (via `retry.StateChangeConf` from `terraform-plugin-sdk/v2/helper/retry`) until the expected state is confirmed (e.g. `GetUser` succeeds after create, or returns not-found after delete) before returning. See `waitForUser`/`waitForUserDeleted` in `user_resource.go` for the pattern.
-- Do **not** wrap `Read`/`ModifyPlan` lookups in retries — they must fail fast on a genuine not-found (e.g. the resource was deleted outside Terraform), not mask it behind a retry window.
-- Do **not** use fixed `time.Sleep` delays for this — they're unreliable (proven in CI: a fixed 5s delay still failed ~20% of acceptance test runs) and only get slower as the API degrades. Always poll for the actual expected condition instead.
+The App Store Connect API is eventually consistent: a resource just created may 404 for a few seconds, and a resource just deleted may still cause "already in use" errors on immediate recreate. `retry.go` has generic `waitForResource[T]`/`waitForResourceDeleted[T]` helpers for this — call them from a new resource's `Create`/`Delete` right after the mutating API call succeeds, don't reimplement per resource. Do **not** wrap `Read`/`ModifyPlan` lookups in retries (a genuine external deletion must fail fast), and do **not** use fixed `time.Sleep` delays (proven unreliable in CI).
 
 ### Conventional Commits required
 All PR titles must follow [Conventional Commits](https://www.conventionalcommits.org/) — this drives automated versioning. Enable the repo's Git hooks to catch this locally:
@@ -58,3 +55,6 @@ git config core.hooksPath hooks
 
 ### Keep commit messages concise
 Use a single Conventional Commits summary line; avoid multi-paragraph commit bodies unless essential context would otherwise be lost.
+
+### Keep doc comments terse
+One short line of essential, non-obvious context. Skip comments that restate the code.

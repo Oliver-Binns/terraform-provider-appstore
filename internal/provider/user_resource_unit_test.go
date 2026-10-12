@@ -240,14 +240,14 @@ func TestUserResource_Read_RemovesFromState_WhenIDAndEmailAreEmpty(t *testing.T)
 }
 
 func TestWaitForUser_RetriesUntilFound(t *testing.T) {
-	originalTimeout := userLookupRetryTimeout
-	originalPollInterval := userLookupRetryPollInterval
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
-		userLookupRetryTimeout = originalTimeout
-		userLookupRetryPollInterval = originalPollInterval
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
 	}()
-	userLookupRetryTimeout = time.Second
-	userLookupRetryPollInterval = 10 * time.Millisecond
+	apiLookupRetryTimeout = time.Second
+	apiLookupRetryPollInterval = 10 * time.Millisecond
 
 	callCount := 0
 	user, err := waitForUser(context.Background(), func() (*users.User, error) {
@@ -270,14 +270,14 @@ func TestWaitForUser_RetriesUntilFound(t *testing.T) {
 }
 
 func TestWaitForUser_RetriesEmailLookupUntilFound(t *testing.T) {
-	originalTimeout := userLookupRetryTimeout
-	originalPollInterval := userLookupRetryPollInterval
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
-		userLookupRetryTimeout = originalTimeout
-		userLookupRetryPollInterval = originalPollInterval
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
 	}()
-	userLookupRetryTimeout = time.Second
-	userLookupRetryPollInterval = 10 * time.Millisecond
+	apiLookupRetryTimeout = time.Second
+	apiLookupRetryPollInterval = 10 * time.Millisecond
 
 	callCount := 0
 	user, err := waitForUser(context.Background(), func() (*users.User, error) {
@@ -300,14 +300,14 @@ func TestWaitForUser_RetriesEmailLookupUntilFound(t *testing.T) {
 }
 
 func TestWaitForUser_ReturnsErrNotFound_WhenRetriesExhausted(t *testing.T) {
-	originalTimeout := userLookupRetryTimeout
-	originalPollInterval := userLookupRetryPollInterval
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
-		userLookupRetryTimeout = originalTimeout
-		userLookupRetryPollInterval = originalPollInterval
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
 	}()
-	userLookupRetryTimeout = 20 * time.Millisecond
-	userLookupRetryPollInterval = 5 * time.Millisecond
+	apiLookupRetryTimeout = 20 * time.Millisecond
+	apiLookupRetryPollInterval = 5 * time.Millisecond
 
 	user, err := waitForUser(context.Background(), func() (*users.User, error) {
 		return nil, users.ErrNotFound
@@ -322,14 +322,14 @@ func TestWaitForUser_ReturnsErrNotFound_WhenRetriesExhausted(t *testing.T) {
 }
 
 func TestWaitForUser_ReturnsNilNil_WhenEmailLookupNeverFinds(t *testing.T) {
-	originalTimeout := userLookupRetryTimeout
-	originalPollInterval := userLookupRetryPollInterval
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
-		userLookupRetryTimeout = originalTimeout
-		userLookupRetryPollInterval = originalPollInterval
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
 	}()
-	userLookupRetryTimeout = 20 * time.Millisecond
-	userLookupRetryPollInterval = 5 * time.Millisecond
+	apiLookupRetryTimeout = 20 * time.Millisecond
+	apiLookupRetryPollInterval = 5 * time.Millisecond
 
 	user, err := waitForUser(context.Background(), func() (*users.User, error) {
 		return nil, nil
@@ -344,9 +344,9 @@ func TestWaitForUser_ReturnsNilNil_WhenEmailLookupNeverFinds(t *testing.T) {
 }
 
 func TestWaitForUser_ReturnsNonNotFoundErrorImmediately(t *testing.T) {
-	originalTimeout := userLookupRetryTimeout
-	defer func() { userLookupRetryTimeout = originalTimeout }()
-	userLookupRetryTimeout = time.Minute // would hang the test if not returned immediately
+	originalTimeout := apiLookupRetryTimeout
+	defer func() { apiLookupRetryTimeout = originalTimeout }()
+	apiLookupRetryTimeout = time.Minute // would hang the test if not returned immediately
 
 	callCount := 0
 	wantErr := errors.New("API unavailable")
@@ -479,14 +479,14 @@ func TestUserResource_Create_WaitsUntilUserVisibleBeforeReturning(t *testing.T) 
 		},
 	}
 
-	originalTimeout := userLookupRetryTimeout
-	originalPollInterval := userLookupRetryPollInterval
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
-		userLookupRetryTimeout = originalTimeout
-		userLookupRetryPollInterval = originalPollInterval
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
 	}()
-	userLookupRetryTimeout = time.Second
-	userLookupRetryPollInterval = 10 * time.Millisecond
+	apiLookupRetryTimeout = time.Second
+	apiLookupRetryPollInterval = 10 * time.Millisecond
 
 	schema := userResourceSchema()
 	planVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
@@ -529,14 +529,14 @@ func TestUserResource_Create_ErrorsWhenUserNeverBecomesVisible(t *testing.T) {
 		},
 	}
 
-	originalTimeout := userLookupRetryTimeout
-	originalPollInterval := userLookupRetryPollInterval
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
-		userLookupRetryTimeout = originalTimeout
-		userLookupRetryPollInterval = originalPollInterval
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
 	}()
-	userLookupRetryTimeout = 20 * time.Millisecond
-	userLookupRetryPollInterval = 5 * time.Millisecond
+	apiLookupRetryTimeout = 20 * time.Millisecond
+	apiLookupRetryPollInterval = 5 * time.Millisecond
 
 	schema := userResourceSchema()
 	planVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
@@ -684,14 +684,14 @@ func TestUserResource_Delete_WaitsUntilUserDisappearsAfterSuccessfulDelete(t *te
 
 	// Use a short poll interval in the test so it runs quickly, while still
 	// exercising the real retry loop made by Delete().
-	originalTimeout := userLookupRetryTimeout
-	originalPollInterval := userLookupRetryPollInterval
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
-		userLookupRetryTimeout = originalTimeout
-		userLookupRetryPollInterval = originalPollInterval
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
 	}()
-	userLookupRetryTimeout = time.Second
-	userLookupRetryPollInterval = 10 * time.Millisecond
+	apiLookupRetryTimeout = time.Second
+	apiLookupRetryPollInterval = 10 * time.Millisecond
 
 	schema := userResourceSchema()
 	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
@@ -737,14 +737,14 @@ func TestUserResource_Delete_ErrorsWhenUserNeverDisappears(t *testing.T) {
 		},
 	}
 
-	originalTimeout := userLookupRetryTimeout
-	originalPollInterval := userLookupRetryPollInterval
+	originalTimeout := apiLookupRetryTimeout
+	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
-		userLookupRetryTimeout = originalTimeout
-		userLookupRetryPollInterval = originalPollInterval
+		apiLookupRetryTimeout = originalTimeout
+		apiLookupRetryPollInterval = originalPollInterval
 	}()
-	userLookupRetryTimeout = 20 * time.Millisecond
-	userLookupRetryPollInterval = 5 * time.Millisecond
+	apiLookupRetryTimeout = 20 * time.Millisecond
+	apiLookupRetryPollInterval = 5 * time.Millisecond
 
 	schema := userResourceSchema()
 	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"time"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/terraform-plugin-framework/diag"
@@ -19,7 +18,6 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/stringplanmodifier"
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
-	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
 	"github.com/oliver-binns/appstore-go"
 	"github.com/oliver-binns/appstore-go/users"
 )
@@ -28,99 +26,25 @@ import (
 var _ resource.Resource = &UserResource{}
 var _ resource.ResourceWithImportState = &UserResource{}
 
-// userLookupRetryTimeout and userLookupRetryPollInterval account for
-// eventual consistency in the App Store Connect API: a user invitation
-// created or replaced moments ago may not be immediately resolvable via
-// GetUser or FindUserByEmail. They are vars (rather than consts) so tests
-// can shorten them.
-var userLookupRetryTimeout = 30 * time.Second
-var userLookupRetryPollInterval = 2 * time.Second
-
-// userFoundState and userNotFoundState label the two states a user lookup
-// can resolve to, shared by waitForUser (polls until found) and
-// waitForUserDeleted (polls until not found).
-const (
-	userFoundState    = "found"
-	userNotFoundState = "not-found"
-)
-
-// classifyUserLookup adapts lookup into a retry.StateChangeConf Refresh
-// function, tagging each result as userFoundState or userNotFoundState.
-// Not-found is recognised two ways, matching callers' existing
-// conventions: a GetUser-style lookup returning users.ErrNotFound, or a
-// FindUserByEmail-style lookup returning (nil, nil). lastErr records the
-// most recent not-found error (nil for the FindUserByEmail convention) so
-// waitForUser can restore the exact not-found signal once retries are
-// exhausted. Any other error is surfaced immediately, unretried.
-func classifyUserLookup(lookup func() (*users.User, error), lastErr *error) func() (interface{}, string, error) {
-	return func() (interface{}, string, error) {
-		user, err := lookup()
-		if err != nil {
-			if errors.Is(err, users.ErrNotFound) {
-				*lastErr = err
-				return struct{}{}, userNotFoundState, nil
-			}
-			return nil, "", err
-		}
-		if user == nil {
-			*lastErr = nil
-			return struct{}{}, userNotFoundState, nil
-		}
-		return user, userFoundState, nil
-	}
-}
-
 // waitForUser retries lookup while it reports the user as not found,
-// tolerating eventual consistency in the App Store Connect API, up to
-// userLookupRetryTimeout. It preserves the exact not-found signal callers
-// already expect: a GetUser-style lookup that keeps returning
-// users.ErrNotFound still returns that error once retries are exhausted; a
-// FindUserByEmail-style lookup that keeps returning (nil, nil) still
-// returns (nil, nil). Any other error is returned immediately, unretried.
+// tolerating eventual consistency in the App Store Connect API. It
+// preserves the exact not-found signal callers already expect: a
+// GetUser-style lookup returning users.ErrNotFound still returns that
+// error once retries are exhausted; a FindUserByEmail-style lookup
+// returning (nil, nil) still returns (nil, nil).
 func waitForUser(ctx context.Context, lookup func() (*users.User, error)) (*users.User, error) {
-	var lastErr error
-	stateConf := &retry.StateChangeConf{
-		Pending:    []string{userNotFoundState},
-		Target:     []string{userFoundState},
-		Refresh:    classifyUserLookup(lookup, &lastErr),
-		Timeout:    userLookupRetryTimeout,
-		MinTimeout: userLookupRetryPollInterval,
-	}
-
-	result, err := stateConf.WaitForStateContext(ctx)
-	if err != nil {
-		var timeoutErr *retry.TimeoutError
-		if errors.As(err, &timeoutErr) {
-			return nil, lastErr
-		}
-		return nil, err
-	}
-	user, ok := result.(*users.User)
-	if !ok {
-		return nil, fmt.Errorf("unexpected type %T returned while waiting for user", result)
-	}
-	return user, nil
+	return waitForResource(ctx, lookup, func(err error) bool {
+		return errors.Is(err, users.ErrNotFound)
+	})
 }
 
-// waitForUserDeleted polls lookup until it reports the user as not found
-// (users.ErrNotFound), tolerating eventual consistency in the App Store
-// Connect API: revoking a user invitation does not always immediately
-// release its email address for reuse, which otherwise risks a 409 "email
-// already in use" error if Terraform immediately recreates a resource using
-// the same email (e.g. as part of a destroy-then-create replace). Any other
-// error from lookup is returned immediately, unretried.
+// waitForUserDeleted polls lookup until the user is not found, tolerating
+// eventual consistency after Delete (so an immediate recreate using the
+// same email doesn't 409).
 func waitForUserDeleted(ctx context.Context, lookup func() (*users.User, error)) error {
-	var lastErr error
-	stateConf := &retry.StateChangeConf{
-		Pending:    []string{userFoundState},
-		Target:     []string{userNotFoundState},
-		Refresh:    classifyUserLookup(lookup, &lastErr),
-		Timeout:    userLookupRetryTimeout,
-		MinTimeout: userLookupRetryPollInterval,
-	}
-
-	_, err := stateConf.WaitForStateContext(ctx)
-	return err
+	return waitForResourceDeleted(ctx, lookup, func(err error) bool {
+		return errors.Is(err, users.ErrNotFound)
+	})
 }
 
 type userClient interface {
