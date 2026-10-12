@@ -52,7 +52,43 @@ resource "appstoreconnect_user" "example" {
 
 ### App specific permissions
 
-Details coming soon.
+Instead of granting access to every app, set `all_apps_visible = false` and list the apps the user may see in **visible_apps** (a set of App Store Connect app IDs).
+
+`visible_apps` must not be set when `all_apps_visible` is `true`; in that case it is stored as null in state.
+
+```tf
+resource "appstoreconnect_user" "limited" {
+  first_name = "Oliver"
+  last_name = "Binns"
+
+  email = "mail@oliverbinns.co.uk"
+
+  roles = ["DEVELOPER"]
+
+  all_apps_visible = false
+  visible_apps = ["1234567890", "0987654321"]
+  provisioning_allowed = false
+}
+```
+
+### Managing devices
+
+You can register devices as a Terraform resource (`appstoreconnect_device`).
+
+- **name** (required): The name of the device.
+- **udid** (required): The device's unique device identifier (UDID).
+- **platform** (required): The platform of the device, e.g. `IOS` or `MAC_OS`.
+- **status** (optional): `ENABLED` or `DISABLED`.
+
+`id`, `device_class` and `model` are read-only and set by Apple.
+
+```tf
+resource "appstoreconnect_device" "example" {
+  name = "Oliver's iPhone"
+  udid = "00008030-001234567890002E"
+  platform = "IOS"
+}
+```
 
 ## Contributing
 
