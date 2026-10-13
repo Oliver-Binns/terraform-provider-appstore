@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
+	"github.com/oliver-binns/appstore-go/networking"
 	"github.com/oliver-binns/appstore-go/users"
 )
 
@@ -253,7 +254,7 @@ func TestWaitForUser_RetriesUntilFound(t *testing.T) {
 	user, err := waitForUser(context.Background(), func() (*users.User, error) {
 		callCount++
 		if callCount < 3 {
-			return nil, users.ErrNotFound
+			return nil, networking.ErrNotFound
 		}
 		return &users.User{ID: "found-id"}, nil
 	})
@@ -310,11 +311,11 @@ func TestWaitForUser_ReturnsErrNotFound_WhenRetriesExhausted(t *testing.T) {
 	apiLookupRetryPollInterval = 5 * time.Millisecond
 
 	user, err := waitForUser(context.Background(), func() (*users.User, error) {
-		return nil, users.ErrNotFound
+		return nil, networking.ErrNotFound
 	})
 
-	if !errors.Is(err, users.ErrNotFound) {
-		t.Fatalf("expected users.ErrNotFound once retries are exhausted, got %v", err)
+	if !errors.Is(err, networking.ErrNotFound) {
+		t.Fatalf("expected networking.ErrNotFound once retries are exhausted, got %v", err)
 	}
 	if user != nil {
 		t.Fatalf("expected nil user, got %+v", user)
@@ -472,7 +473,7 @@ func TestUserResource_Create_WaitsUntilUserVisibleBeforeReturning(t *testing.T) 
 			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
 				getUserCalls++
 				if getUserCalls < 3 {
-					return nil, users.ErrNotFound
+					return nil, networking.ErrNotFound
 				}
 				return &users.User{ID: id}, nil
 			},
@@ -524,7 +525,7 @@ func TestUserResource_Create_ErrorsWhenUserNeverBecomesVisible(t *testing.T) {
 				return &users.User{ID: "new-uuid"}, nil
 			},
 			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
-				return nil, users.ErrNotFound
+				return nil, networking.ErrNotFound
 			},
 		},
 	}
@@ -677,7 +678,7 @@ func TestUserResource_Delete_WaitsUntilUserDisappearsAfterSuccessfulDelete(t *te
 				if getUserCalls < 3 {
 					return &users.User{ID: id}, nil
 				}
-				return nil, users.ErrNotFound
+				return nil, networking.ErrNotFound
 			},
 		},
 	}
@@ -782,7 +783,7 @@ func TestUserResource_Delete_DoesNotWait_WhenDeleteUserFails(t *testing.T) {
 			},
 			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
 				getUserCalled = true
-				return nil, users.ErrNotFound
+				return nil, networking.ErrNotFound
 			},
 		},
 	}

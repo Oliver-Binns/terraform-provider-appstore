@@ -19,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/oliver-binns/appstore-go"
+	"github.com/oliver-binns/appstore-go/networking"
 	"github.com/oliver-binns/appstore-go/users"
 )
 
@@ -26,17 +27,17 @@ import (
 var _ resource.Resource = &UserResource{}
 var _ resource.ResourceWithImportState = &UserResource{}
 
-// waitForUser wraps waitForResource for users.ErrNotFound.
+// waitForUser wraps waitForResource for networking.ErrNotFound.
 func waitForUser(ctx context.Context, lookup func() (*users.User, error)) (*users.User, error) {
 	return waitForResource(ctx, lookup, func(err error) bool {
-		return errors.Is(err, users.ErrNotFound)
+		return errors.Is(err, networking.ErrNotFound)
 	})
 }
 
-// waitForUserDeleted wraps waitForResourceDeleted for users.ErrNotFound.
+// waitForUserDeleted wraps waitForResourceDeleted for networking.ErrNotFound.
 func waitForUserDeleted(ctx context.Context, lookup func() (*users.User, error)) error {
 	return waitForResourceDeleted(ctx, lookup, func(err error) bool {
-		return errors.Is(err, users.ErrNotFound)
+		return errors.Is(err, networking.ErrNotFound)
 	})
 }
 
