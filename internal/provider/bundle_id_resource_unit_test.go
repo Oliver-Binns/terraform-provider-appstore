@@ -14,6 +14,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/oliver-binns/appstore-go/bundleids"
+	"github.com/oliver-binns/appstore-go/networking"
 	"github.com/oliver-binns/appstore-go/openapi"
 )
 
@@ -227,7 +228,7 @@ func TestBundleIDResource_Create_WaitsUntilBundleIDVisibleBeforeReturning(t *tes
 			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
 				getBundleIDCalls++
 				if getBundleIDCalls < 3 {
-					return nil, bundleids.ErrNotFound
+					return nil, networking.ErrNotFound
 				}
 				return &bundleids.BundleID{ID: id}, nil
 			},
@@ -270,7 +271,7 @@ func TestBundleIDResource_Create_ErrorsWhenBundleIDNeverBecomesVisible(t *testin
 				return &bundleids.BundleID{ID: "bundle-uuid"}, nil
 			},
 			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
-				return nil, bundleids.ErrNotFound
+				return nil, networking.ErrNotFound
 			},
 		},
 	}
@@ -405,7 +406,7 @@ func TestBundleIDResource_Delete_CallsDeleteOnClient(t *testing.T) {
 				return nil
 			},
 			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
-				return nil, bundleids.ErrNotFound
+				return nil, networking.ErrNotFound
 			},
 		},
 	}
@@ -479,7 +480,7 @@ func TestBundleIDResource_Delete_WaitsUntilBundleIDDisappearsAfterSuccessfulDele
 				if getBundleIDCalls < 3 {
 					return &bundleids.BundleID{ID: id}, nil
 				}
-				return nil, bundleids.ErrNotFound
+				return nil, networking.ErrNotFound
 			},
 		},
 	}
@@ -572,7 +573,7 @@ func TestBundleIDResource_Delete_DoesNotWait_WhenDeleteBundleIDFails(t *testing.
 			},
 			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
 				getBundleIDCalled = true
-				return nil, bundleids.ErrNotFound
+				return nil, networking.ErrNotFound
 			},
 		},
 	}
