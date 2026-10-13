@@ -240,7 +240,7 @@ func TestUserResource_Read_RemovesFromState_WhenIDAndEmailAreEmpty(t *testing.T)
 	}
 }
 
-func TestWaitForUser_RetriesUntilFound(t *testing.T) {
+func TestWaitForResource_RetriesUntilFound(t *testing.T) {
 	originalTimeout := apiLookupRetryTimeout
 	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
@@ -251,7 +251,7 @@ func TestWaitForUser_RetriesUntilFound(t *testing.T) {
 	apiLookupRetryPollInterval = 10 * time.Millisecond
 
 	callCount := 0
-	user, err := waitForUser(context.Background(), func() (*users.User, error) {
+	user, err := waitForResource(context.Background(), func() (*users.User, error) {
 		callCount++
 		if callCount < 3 {
 			return nil, networking.ErrNotFound
@@ -270,7 +270,7 @@ func TestWaitForUser_RetriesUntilFound(t *testing.T) {
 	}
 }
 
-func TestWaitForUser_RetriesEmailLookupUntilFound(t *testing.T) {
+func TestWaitForResource_RetriesEmailLookupUntilFound(t *testing.T) {
 	originalTimeout := apiLookupRetryTimeout
 	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
@@ -281,7 +281,7 @@ func TestWaitForUser_RetriesEmailLookupUntilFound(t *testing.T) {
 	apiLookupRetryPollInterval = 10 * time.Millisecond
 
 	callCount := 0
-	user, err := waitForUser(context.Background(), func() (*users.User, error) {
+	user, err := waitForResource(context.Background(), func() (*users.User, error) {
 		callCount++
 		if callCount < 3 {
 			return nil, nil // FindUserByEmail's not-found convention
@@ -300,7 +300,7 @@ func TestWaitForUser_RetriesEmailLookupUntilFound(t *testing.T) {
 	}
 }
 
-func TestWaitForUser_ReturnsErrNotFound_WhenRetriesExhausted(t *testing.T) {
+func TestWaitForResource_ReturnsErrNotFound_WhenRetriesExhausted(t *testing.T) {
 	originalTimeout := apiLookupRetryTimeout
 	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
@@ -310,7 +310,7 @@ func TestWaitForUser_ReturnsErrNotFound_WhenRetriesExhausted(t *testing.T) {
 	apiLookupRetryTimeout = 20 * time.Millisecond
 	apiLookupRetryPollInterval = 5 * time.Millisecond
 
-	user, err := waitForUser(context.Background(), func() (*users.User, error) {
+	user, err := waitForResource(context.Background(), func() (*users.User, error) {
 		return nil, networking.ErrNotFound
 	})
 
@@ -322,7 +322,7 @@ func TestWaitForUser_ReturnsErrNotFound_WhenRetriesExhausted(t *testing.T) {
 	}
 }
 
-func TestWaitForUser_ReturnsNilNil_WhenEmailLookupNeverFinds(t *testing.T) {
+func TestWaitForResource_ReturnsNilNil_WhenEmailLookupNeverFinds(t *testing.T) {
 	originalTimeout := apiLookupRetryTimeout
 	originalPollInterval := apiLookupRetryPollInterval
 	defer func() {
@@ -332,7 +332,7 @@ func TestWaitForUser_ReturnsNilNil_WhenEmailLookupNeverFinds(t *testing.T) {
 	apiLookupRetryTimeout = 20 * time.Millisecond
 	apiLookupRetryPollInterval = 5 * time.Millisecond
 
-	user, err := waitForUser(context.Background(), func() (*users.User, error) {
+	user, err := waitForResource(context.Background(), func() (*users.User, error) {
 		return nil, nil
 	})
 
@@ -344,14 +344,14 @@ func TestWaitForUser_ReturnsNilNil_WhenEmailLookupNeverFinds(t *testing.T) {
 	}
 }
 
-func TestWaitForUser_ReturnsNonNotFoundErrorImmediately(t *testing.T) {
+func TestWaitForResource_ReturnsNonNotFoundErrorImmediately(t *testing.T) {
 	originalTimeout := apiLookupRetryTimeout
 	defer func() { apiLookupRetryTimeout = originalTimeout }()
 	apiLookupRetryTimeout = time.Minute // would hang the test if not returned immediately
 
 	callCount := 0
 	wantErr := errors.New("API unavailable")
-	_, err := waitForUser(context.Background(), func() (*users.User, error) {
+	_, err := waitForResource(context.Background(), func() (*users.User, error) {
 		callCount++
 		return nil, wantErr
 	})

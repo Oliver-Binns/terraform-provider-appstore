@@ -154,6 +154,15 @@ func (r *DeviceResource) Create(ctx context.Context, req resource.CreateRequest,
 
 	tflog.Trace(ctx, "registered a new device")
 
+	// Wait for eventual consistency before the implicit post-apply refresh reads this back.
+	device, err = waitForResource(ctx, func() (*devices.Device, error) {
+		return r.client.GetDevice(ctx, device.ID)
+	})
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Device was registered but did not become visible in time: %s", err))
+		return
+	}
+
 	r.populateState(&data, device)
 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
