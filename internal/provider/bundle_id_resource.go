@@ -5,7 +5,6 @@ package provider
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -20,20 +19,6 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &BundleIDResource{}
 var _ resource.ResourceWithImportState = &BundleIDResource{}
-
-// waitForBundleID wraps waitForResource for bundleids.ErrNotFound.
-func waitForBundleID(ctx context.Context, lookup func() (*bundleids.BundleID, error)) (*bundleids.BundleID, error) {
-	return waitForResource(ctx, lookup, func(err error) bool {
-		return errors.Is(err, bundleids.ErrNotFound)
-	})
-}
-
-// waitForBundleIDDeleted wraps waitForResourceDeleted for bundleids.ErrNotFound.
-func waitForBundleIDDeleted(ctx context.Context, lookup func() (*bundleids.BundleID, error)) error {
-	return waitForResourceDeleted(ctx, lookup, func(err error) bool {
-		return errors.Is(err, bundleids.ErrNotFound)
-	})
-}
 
 type bundleIDClient interface {
 	GetBundleID(ctx context.Context, id string) (*bundleids.BundleID, error)
@@ -151,7 +136,7 @@ func (r *BundleIDResource) Create(ctx context.Context, req resource.CreateReques
 	tflog.Trace(ctx, "created a new bundle ID")
 
 	// Wait for eventual consistency before the implicit post-apply refresh reads this back.
-	bundleID, err = waitForBundleID(ctx, func() (*bundleids.BundleID, error) {
+	bundleID, err = waitForResource(ctx, func() (*bundleids.BundleID, error) {
 		return r.client.GetBundleID(ctx, bundleID.ID)
 	})
 	if err != nil {
@@ -223,7 +208,7 @@ func (r *BundleIDResource) Delete(ctx context.Context, req resource.DeleteReques
 	tflog.Trace(ctx, "deleted a bundle ID")
 
 	// Wait so an immediate recreate (e.g. forced replace) doesn't 409 on the reused identifier.
-	if err := waitForBundleIDDeleted(ctx, func() (*bundleids.BundleID, error) {
+	if err := waitForResourceDeleted(ctx, func() (*bundleids.BundleID, error) {
 		return r.client.GetBundleID(ctx, data.ID.ValueString())
 	}); err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Bundle ID was deleted but did not disappear from the API in time: %s", err))
