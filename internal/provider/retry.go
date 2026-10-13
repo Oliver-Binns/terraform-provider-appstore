@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/v2/helper/retry"
+	"github.com/oliver-binns/appstore-go/networking"
 )
 
 // Shared across all resources; vars so tests can shorten them.
@@ -19,12 +20,12 @@ const (
 )
 
 // classifyResourceLookup maps lookup to a retry.StateChangeConf Refresh
-// func, treating an isNotFound error or a nil result as not-found.
-func classifyResourceLookup[T any](lookup func() (*T, error), isNotFound func(error) bool, lastErr *error) func() (interface{}, string, error) {
+// func, treating a networking.ErrNotFound error or a nil result as not-found.
+func classifyResourceLookup[T any](lookup func() (*T, error), lastErr *error) func() (interface{}, string, error) {
 	return func() (interface{}, string, error) {
 		resource, err := lookup()
 		if err != nil {
-			if isNotFound(err) {
+			if errors.Is(err, networking.ErrNotFound) {
 				*lastErr = err
 				return struct{}{}, resourceNotFoundState, nil
 			}
@@ -39,12 +40,12 @@ func classifyResourceLookup[T any](lookup func() (*T, error), isNotFound func(er
 }
 
 // waitForResource polls lookup until found, replaying its not-found signal on timeout.
-func waitForResource[T any](ctx context.Context, lookup func() (*T, error), isNotFound func(error) bool) (*T, error) {
+func waitForResource[T any](ctx context.Context, lookup func() (*T, error)) (*T, error) {
 	var lastErr error
 	stateConf := &retry.StateChangeConf{
 		Pending:    []string{resourceNotFoundState},
 		Target:     []string{resourceFoundState},
-		Refresh:    classifyResourceLookup(lookup, isNotFound, &lastErr),
+		Refresh:    classifyResourceLookup(lookup, &lastErr),
 		Timeout:    apiLookupRetryTimeout,
 		MinTimeout: apiLookupRetryPollInterval,
 	}
@@ -65,12 +66,12 @@ func waitForResource[T any](ctx context.Context, lookup func() (*T, error), isNo
 }
 
 // waitForResourceDeleted polls lookup until it reports not-found.
-func waitForResourceDeleted[T any](ctx context.Context, lookup func() (*T, error), isNotFound func(error) bool) error {
+func waitForResourceDeleted[T any](ctx context.Context, lookup func() (*T, error)) error {
 	var lastErr error
 	stateConf := &retry.StateChangeConf{
 		Pending:    []string{resourceFoundState},
 		Target:     []string{resourceNotFoundState},
-		Refresh:    classifyResourceLookup(lookup, isNotFound, &lastErr),
+		Refresh:    classifyResourceLookup(lookup, &lastErr),
 		Timeout:    apiLookupRetryTimeout,
 		MinTimeout: apiLookupRetryPollInterval,
 	}

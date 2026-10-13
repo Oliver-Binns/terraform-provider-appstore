@@ -5,13 +5,16 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"testing"
+	"time"
 
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/tfsdk"
 	"github.com/hashicorp/terraform-plugin-go/tftypes"
 	"github.com/oliver-binns/appstore-go/devices"
+	"github.com/oliver-binns/appstore-go/networking"
 	"github.com/oliver-binns/appstore-go/openapi"
 )
 
@@ -73,6 +76,9 @@ func TestDeviceResource_Create_SetsStateCorrectly(t *testing.T) {
 	r := &DeviceResource{
 		client: &mockDeviceClient{
 			registerDeviceFn: func(ctx context.Context, device devices.Device) (*devices.Device, error) {
+				return &devices.Device{ID: "device-uuid"}, nil
+			},
+			getDeviceFn: func(ctx context.Context, id string) (*devices.Device, error) {
 				return &devices.Device{
 					ID:          "device-uuid",
 					Name:        "Oliver's iPhone",
@@ -274,5 +280,74 @@ func TestDeviceResource_ImportState_ByUDID(t *testing.T) {
 	}
 	if data.UDID.ValueString() != iphone16ProUDID {
 		t.Errorf("expected UDID %q, got %q", iphone16ProUDID, data.UDID.ValueString())
+	}
+}
+
+func runDeviceCreateWithGet(t *testing.T, getFn func(ctx context.Context, id string) (*devices.Device, error)) (*resource.CreateResponse, DeviceResourceModel) {
+	t.Helper()
+	origTimeout, origPoll := apiLookupRetryTimeout, apiLookupRetryPollInterval
+	t.Cleanup(func() { apiLookupRetryTimeout, apiLookupRetryPollInterval = origTimeout, origPoll })
+	apiLookupRetryTimeout = time.Second
+	apiLookupRetryPollInterval = 10 * time.Millisecond
+
+	r := &DeviceResource{client: &mockDeviceClient{
+		registerDeviceFn: func(ctx context.Context, device devices.Device) (*devices.Device, error) {
+			return &devices.Device{ID: "device-uuid"}, nil
+		},
+		getDeviceFn: getFn,
+	}}
+	s := deviceResourceSchema()
+	planVal := devicePlanVal(s)
+	resp := &resource.CreateResponse{State: tfsdk.State{Schema: s, Raw: planVal}}
+	r.Create(context.Background(), resource.CreateRequest{Plan: tfsdk.Plan{Schema: s, Raw: planVal}}, resp)
+
+	var data DeviceResourceModel
+	resp.State.Get(context.Background(), &data)
+	return resp, data
+}
+
+func TestDeviceResource_Create_WaitsUntilDeviceVisibleBeforeReturning(t *testing.T) {
+	calls := 0
+	resp, data := runDeviceCreateWithGet(t, func(ctx context.Context, id string) (*devices.Device, error) {
+		calls++
+		if calls < 3 {
+			return nil, networking.ErrNotFound
+		}
+		return &devices.Device{ID: id, Model: "iPhone 14 Pro", Status: openapi.Enabled}, nil
+	})
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if calls != 3 {
+		t.Errorf("expected 3 GetDevice calls, got %d", calls)
+	}
+	if data.Model.ValueString() != "iPhone 14 Pro" {
+		t.Errorf("expected state from the visible device, got model %q", data.Model.ValueString())
+	}
+}
+
+func TestDeviceResource_Create_ErrorsWhenDeviceNeverVisible(t *testing.T) {
+	resp, _ := runDeviceCreateWithGet(t, func(ctx context.Context, id string) (*devices.Device, error) {
+		return nil, networking.ErrNotFound
+	})
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an error when the device never becomes visible")
+	}
+}
+
+func TestDeviceResource_Create_DoesNotRetryNonNotFoundErrors(t *testing.T) {
+	calls := 0
+	resp, _ := runDeviceCreateWithGet(t, func(ctx context.Context, id string) (*devices.Device, error) {
+		calls++
+		return nil, errors.New("API unavailable")
+	})
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an error")
+	}
+	if calls != 1 {
+		t.Errorf("expected 1 GetDevice call, got %d", calls)
 	}
 }
