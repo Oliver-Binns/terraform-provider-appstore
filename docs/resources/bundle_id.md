@@ -18,7 +18,7 @@ Manages a bundle ID registered in App Store Connect.
 ### Required
 
 - `identifier` (String) The bundle ID identifier string (e.g. `com.example.app`). Immutable after creation.
-- `name` (String) The name of the bundle ID.
+- `name` (String) The name of the bundle ID. May only contain letters, numbers, spaces and the characters `.`, `-` and `'`.
 
 ### Optional
 

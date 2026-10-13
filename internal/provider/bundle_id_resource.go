@@ -6,7 +6,9 @@ package provider
 import (
 	"context"
 	"fmt"
+	"regexp"
 
+	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema"
 	"github.com/hashicorp/terraform-plugin-framework/resource/schema/planmodifier"
@@ -19,6 +21,10 @@ import (
 // Ensure provider defined types fully satisfy framework interfaces.
 var _ resource.Resource = &BundleIDResource{}
 var _ resource.ResourceWithImportState = &BundleIDResource{}
+var _ resource.ResourceWithValidateConfig = &BundleIDResource{}
+
+// App Store Connect only accepts letters, digits, spaces and . - ' in bundle ID names.
+var bundleIDNamePattern = regexp.MustCompile(`^[\p{L}\p{N} .'-]+$`)
 
 type bundleIDClient interface {
 	GetBundleID(ctx context.Context, id string) (*bundleids.BundleID, error)
@@ -63,7 +69,7 @@ func (r *BundleIDResource) Schema(ctx context.Context, req resource.SchemaReques
 			},
 			"name": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The name of the bundle ID.",
+				MarkdownDescription: "The name of the bundle ID. May only contain letters, numbers, spaces and the characters `.`, `-` and `'`.",
 			},
 			"identifier": schema.StringAttribute{
 				Required:            true,
@@ -86,6 +92,23 @@ func (r *BundleIDResource) Schema(ctx context.Context, req resource.SchemaReques
 				},
 			},
 		},
+	}
+}
+
+func (r *BundleIDResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
+	var name types.String
+
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("name"), &name)...)
+	if resp.Diagnostics.HasError() || name.IsNull() || name.IsUnknown() {
+		return
+	}
+
+	if !bundleIDNamePattern.MatchString(name.ValueString()) {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("name"),
+			"Invalid Bundle ID Name",
+			"The name may only contain letters, numbers, spaces and the characters `.`, `-` and `'`.",
+		)
 	}
 }
 

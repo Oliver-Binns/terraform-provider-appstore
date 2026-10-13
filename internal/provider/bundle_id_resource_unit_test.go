@@ -685,3 +685,38 @@ func TestBundleIDResource_ImportState_NotFound(t *testing.T) {
 		t.Fatal("expected error diagnostics for not-found bundle ID, got none")
 	}
 }
+
+func TestBundleIDResource_ValidateConfig_Name(t *testing.T) {
+	tests := map[string]struct {
+		name    tftypes.Value
+		wantErr bool
+	}{
+		"letters digits and spaces": {tftypes.NewValue(tftypes.String, "My App 2"), false},
+		"allowed punctuation":       {tftypes.NewValue(tftypes.String, "Oliver's App-v1.0"), false},
+		"parentheses":               {tftypes.NewValue(tftypes.String, "My App (renamed)"), true},
+		"underscore":                {tftypes.NewValue(tftypes.String, "My_App"), true},
+		"unknown":                   {tftypes.NewValue(tftypes.String, tftypes.UnknownValue), false},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			s := bundleIDResourceSchema()
+			raw := tftypes.NewValue(s.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+				"id":         tftypes.NewValue(tftypes.String, nil),
+				"name":       tc.name,
+				"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
+				"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
+				"seed_id":    tftypes.NewValue(tftypes.String, nil),
+			})
+
+			resp := &resource.ValidateConfigResponse{}
+			(&BundleIDResource{}).ValidateConfig(context.Background(), resource.ValidateConfigRequest{
+				Config: tfsdk.Config{Schema: s, Raw: raw},
+			}, resp)
+
+			if resp.Diagnostics.HasError() != tc.wantErr {
+				t.Fatalf("wantErr=%v, diagnostics: %v", tc.wantErr, resp.Diagnostics)
+			}
+		})
+	}
+}
