@@ -19,7 +19,7 @@ func TestAccBundleIDResource(t *testing.T) {
 	shortID := uuid.New().String()[:8]
 	identifier := fmt.Sprintf("uk.co.oliverbinns.%s", shortID)
 	name := fmt.Sprintf("Test App %s", shortID)
-	renamedName := fmt.Sprintf("Test App %s (renamed)", shortID)
+	renamedName := fmt.Sprintf("Test App %s Renamed", shortID)
 
 	resource.Test(t, resource.TestCase{
 		PreCheck:                 func() { testAccPreCheck(t) },
