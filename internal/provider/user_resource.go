@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/oliver-binns/appstore-go"
+	"github.com/oliver-binns/appstore-go/networking"
 	"github.com/oliver-binns/appstore-go/users"
 )
 
@@ -164,7 +166,7 @@ func (r UserResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanReq
 		// Check if the user has accepted their email invite yet:
 		user, err := r.client.GetUser(ctx, data.ID.ValueString())
 		if err != nil {
-			if errors.Is(err, users.ErrNotFound) {
+			if errors.Is(err, networking.ErrNotFound) {
 				// The tracked ID is stale (likely a consumed invitation).
 				// Read runs before ModifyPlan during a normal plan/apply and
 				// will have already re-resolved the user by email, so skip
@@ -264,7 +266,7 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	user, err := r.client.GetUser(ctx, data.ID.ValueString())
 	if err != nil {
-		if errors.Is(err, users.ErrNotFound) {
+		if errors.Is(err, networking.ErrNotFound) {
 			// The tracked ID may be a user invitation that has since been
 			// accepted: App Store Connect assigns the user a new ID and
 			// consumes the invitation, so fall back to re-resolving by email
@@ -282,9 +284,12 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
-// readByEmail resolves a user by their email address, populating state if
-// found or removing the resource from state if they no longer exist.
+// readByEmail re-resolves by email because accepting an invitation gives the user a new ID; email is the only stable key.
 func (r *UserResource) readByEmail(ctx context.Context, data *UserResourceModel, resp *resource.ReadResponse) {
+	if data.Email.IsNull() || data.Email.IsUnknown() || data.Email.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	user, err := r.client.FindUserByEmail(ctx, data.Email.ValueString())
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to find user by email, got error: %s", err))
