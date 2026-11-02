@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -18,6 +19,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/oliver-binns/appstore-go"
+	"github.com/oliver-binns/appstore-go/networking"
 	"github.com/oliver-binns/appstore-go/users"
 )
 
@@ -164,6 +166,13 @@ func (r UserResource) ModifyPlan(ctx context.Context, req resource.ModifyPlanReq
 		// Check if the user has accepted their email invite yet:
 		user, err := r.client.GetUser(ctx, data.ID.ValueString())
 		if err != nil {
+			if errors.Is(err, networking.ErrNotFound) {
+				// The tracked ID is stale (likely a consumed invitation).
+				// Read runs before ModifyPlan during a normal plan/apply and
+				// will have already re-resolved the user by email, so skip
+				// the invite-acceptance check rather than hard-failing here.
+				return
+			}
 			resp.Diagnostics.AddError(
 				"Fetch error",
 				fmt.Sprintf("Unable to fetch state of user %s, got error: %s", data.ID.ValueString(), err),
@@ -251,22 +260,20 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 			resp.State.RemoveResource(ctx)
 			return
 		}
-		user, err := r.client.FindUserByEmail(ctx, data.Email.ValueString())
-		if err != nil {
-			resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to find user by email, got error: %s", err))
-			return
-		}
-		if user == nil {
-			resp.State.RemoveResource(ctx)
-			return
-		}
-		r.populateState(ctx, &data, user, resp.Diagnostics)
-		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+		r.readByEmail(ctx, &data, resp)
 		return
 	}
 
 	user, err := r.client.GetUser(ctx, data.ID.ValueString())
 	if err != nil {
+		if errors.Is(err, networking.ErrNotFound) {
+			// The tracked ID may be a user invitation that has since been
+			// accepted: App Store Connect assigns the user a new ID and
+			// consumes the invitation, so fall back to re-resolving by email
+			// instead of treating this as the user having been removed.
+			r.readByEmail(ctx, &data, resp)
+			return
+		}
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read user, got error: %s", err))
 		return
 	}
@@ -275,6 +282,25 @@ func (r *UserResource) Read(ctx context.Context, req resource.ReadRequest, resp 
 
 	// Save updated data into Terraform state
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
+}
+
+// readByEmail re-resolves by email because accepting an invitation gives the user a new ID; email is the only stable key.
+func (r *UserResource) readByEmail(ctx context.Context, data *UserResourceModel, resp *resource.ReadResponse) {
+	if data.Email.IsNull() || data.Email.IsUnknown() || data.Email.ValueString() == "" {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	user, err := r.client.FindUserByEmail(ctx, data.Email.ValueString())
+	if err != nil {
+		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to find user by email, got error: %s", err))
+		return
+	}
+	if user == nil {
+		resp.State.RemoveResource(ctx)
+		return
+	}
+	r.populateState(ctx, data, user, resp.Diagnostics)
+	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 
 func (r *UserResource) populateState(ctx context.Context, data *UserResourceModel, user *users.User, diags diag.Diagnostics) {
