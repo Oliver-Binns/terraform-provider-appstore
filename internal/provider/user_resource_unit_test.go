@@ -241,138 +241,12 @@ func TestUserResource_Read_RemovesFromState_WhenIDAndEmailAreEmpty(t *testing.T)
 	}
 }
 
-<<<<<<< HEAD
-=======
-func TestWaitForUser_RetriesUntilFound(t *testing.T) {
-	originalTimeout := apiLookupRetryTimeout
-	originalPollInterval := apiLookupRetryPollInterval
-	defer func() {
-		apiLookupRetryTimeout = originalTimeout
-		apiLookupRetryPollInterval = originalPollInterval
-	}()
-	apiLookupRetryTimeout = time.Second
-	apiLookupRetryPollInterval = 10 * time.Millisecond
-
-	callCount := 0
-	user, err := waitForUser(context.Background(), func() (*users.User, error) {
-		callCount++
-		if callCount < 3 {
-			return nil, users.ErrNotFound
-		}
-		return &users.User{ID: "found-id"}, nil
-	})
-
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if callCount != 3 {
-		t.Fatalf("expected lookup to be retried until it succeeded (3 calls), got %d calls", callCount)
-	}
-	if user == nil || user.ID != "found-id" {
-		t.Fatalf("expected to find user with ID %q, got %+v", "found-id", user)
-	}
-}
-
-func TestWaitForUser_RetriesEmailLookupUntilFound(t *testing.T) {
-	originalTimeout := apiLookupRetryTimeout
-	originalPollInterval := apiLookupRetryPollInterval
-	defer func() {
-		apiLookupRetryTimeout = originalTimeout
-		apiLookupRetryPollInterval = originalPollInterval
-	}()
-	apiLookupRetryTimeout = time.Second
-	apiLookupRetryPollInterval = 10 * time.Millisecond
-
-	callCount := 0
-	user, err := waitForUser(context.Background(), func() (*users.User, error) {
-		callCount++
-		if callCount < 3 {
-			return nil, nil // FindUserByEmail's not-found convention
-		}
-		return &users.User{ID: "found-id"}, nil
-	})
-
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if callCount != 3 {
-		t.Fatalf("expected lookup to be retried until it succeeded (3 calls), got %d calls", callCount)
-	}
-	if user == nil || user.ID != "found-id" {
-		t.Fatalf("expected to find user with ID %q, got %+v", "found-id", user)
-	}
-}
-
-func TestWaitForUser_ReturnsErrNotFound_WhenRetriesExhausted(t *testing.T) {
-	originalTimeout := apiLookupRetryTimeout
-	originalPollInterval := apiLookupRetryPollInterval
-	defer func() {
-		apiLookupRetryTimeout = originalTimeout
-		apiLookupRetryPollInterval = originalPollInterval
-	}()
-	apiLookupRetryTimeout = 20 * time.Millisecond
-	apiLookupRetryPollInterval = 5 * time.Millisecond
-
-	user, err := waitForUser(context.Background(), func() (*users.User, error) {
-		return nil, users.ErrNotFound
-	})
-
-	if !errors.Is(err, users.ErrNotFound) {
-		t.Fatalf("expected users.ErrNotFound once retries are exhausted, got %v", err)
-	}
-	if user != nil {
-		t.Fatalf("expected nil user, got %+v", user)
-	}
-}
-
-func TestWaitForUser_ReturnsNilNil_WhenEmailLookupNeverFinds(t *testing.T) {
-	originalTimeout := apiLookupRetryTimeout
-	originalPollInterval := apiLookupRetryPollInterval
-	defer func() {
-		apiLookupRetryTimeout = originalTimeout
-		apiLookupRetryPollInterval = originalPollInterval
-	}()
-	apiLookupRetryTimeout = 20 * time.Millisecond
-	apiLookupRetryPollInterval = 5 * time.Millisecond
-
-	user, err := waitForUser(context.Background(), func() (*users.User, error) {
-		return nil, nil
-	})
-
-	if err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if user != nil {
-		t.Fatalf("expected nil user, got %+v", user)
-	}
-}
-
-func TestWaitForUser_ReturnsNonNotFoundErrorImmediately(t *testing.T) {
-	originalTimeout := apiLookupRetryTimeout
-	defer func() { apiLookupRetryTimeout = originalTimeout }()
-	apiLookupRetryTimeout = time.Minute // would hang the test if not returned immediately
-
-	callCount := 0
-	wantErr := errors.New("API unavailable")
-	_, err := waitForUser(context.Background(), func() (*users.User, error) {
-		callCount++
-		return nil, wantErr
-	})
-
-	if !errors.Is(err, wantErr) {
-		t.Fatalf("expected %v, got %v", wantErr, err)
-	}
-	if callCount != 1 {
-		t.Fatalf("expected lookup to be called exactly once (no retry) for a non-not-found error, got %d calls", callCount)
-	}
-}
-
 func TestUserResource_Read_FallsBackToEmailLookup_WhenGetUserReturnsErrNotFound(t *testing.T) {
 	findCalled := false
 	r := &UserResource{
 		client: &mockUserClient{
 			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
-				return nil, fmt.Errorf("wrapped: %w", users.ErrNotFound)
+				return nil, fmt.Errorf("wrapped: %w", networking.ErrNotFound)
 			},
 			findUserByEmailFn: func(ctx context.Context, email string) (*users.User, error) {
 				findCalled = true
@@ -422,11 +296,49 @@ func TestUserResource_Read_FallsBackToEmailLookup_WhenGetUserReturnsErrNotFound(
 	}
 }
 
+func TestUserResource_Read_RemovesFromState_WhenGetUserReturnsErrNotFound_AndEmailIsEmpty(t *testing.T) {
+	r := &UserResource{
+		client: &mockUserClient{
+			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
+				return nil, networking.ErrNotFound
+			},
+			findUserByEmailFn: func(ctx context.Context, email string) (*users.User, error) {
+				t.Fatal("FindUserByEmail must not be called without an email")
+				return nil, nil
+			},
+		},
+	}
+
+	schema := userResourceSchema()
+	stateVal := tftypes.NewValue(schema.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":                   tftypes.NewValue(tftypes.String, "imported-id"),
+		"first_name":           tftypes.NewValue(tftypes.String, nil),
+		"last_name":            tftypes.NewValue(tftypes.String, nil),
+		"email":                tftypes.NewValue(tftypes.String, nil),
+		"roles":                tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"all_apps_visible":     tftypes.NewValue(tftypes.Bool, nil),
+		"visible_apps":         tftypes.NewValue(tftypes.Set{ElementType: tftypes.String}, nil),
+		"provisioning_allowed": tftypes.NewValue(tftypes.Bool, nil),
+	})
+
+	req := resource.ReadRequest{State: tfsdk.State{Schema: schema, Raw: stateVal}}
+	resp := &resource.ReadResponse{State: tfsdk.State{Schema: schema, Raw: stateVal}}
+
+	r.Read(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if !resp.State.Raw.IsNull() {
+		t.Fatal("expected resource to be removed from state")
+	}
+}
+
 func TestUserResource_Read_RemovesFromState_WhenGetUserReturnsErrNotFound_AndNoMatchingEmail(t *testing.T) {
 	r := &UserResource{
 		client: &mockUserClient{
 			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
-				return nil, users.ErrNotFound
+				return nil, networking.ErrNotFound
 			},
 			findUserByEmailFn: func(ctx context.Context, email string) (*users.User, error) {
 				return nil, nil
@@ -467,7 +379,7 @@ func TestUserResource_ModifyPlan_SkipsReplaceCheck_WhenGetUserReturnsErrNotFound
 	r := UserResource{
 		client: &mockUserClient{
 			getUserFn: func(ctx context.Context, id string) (*users.User, error) {
-				return nil, users.ErrNotFound
+				return nil, networking.ErrNotFound
 			},
 		},
 	}
@@ -502,7 +414,6 @@ func TestUserResource_ModifyPlan_SkipsReplaceCheck_WhenGetUserReturnsErrNotFound
 	}
 }
 
->>>>>>> a3ead4e (fix: self-heal stale invitation IDs by re-resolving user by email)
 func userResourceSchema() schema.Schema {
 	r := &UserResource{}
 	schemaResp := &resource.SchemaResponse{}
