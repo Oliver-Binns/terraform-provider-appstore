@@ -22,9 +22,9 @@ Manages a bundle ID registered in App Store Connect.
 
 ### Optional
 
-- `platform` (String) The platform for the bundle ID: `IOS`, `MAC_OS`, or `UNIVERSAL`. Immutable after creation — the App Store Connect API may normalize the value (e.g. `IOS` becomes `UNIVERSAL`). To recreate with a different platform, remove and re-add the resource.
-- `seed_id` (String) The team's seed ID assigned to the bundle ID. Assigned by Apple if not specified.
+- `seed_id` (String) The team's seed ID assigned to the bundle ID. Assigned by Apple if not specified. Changing this forces a new resource to be created.
 
 ### Read-Only
 
 - `id` (String) The unique identifier for the bundle ID resource (Apple-assigned, not the identifier string).
+- `platform` (String) The platform of the bundle ID. App Store Connect now stores every new bundle ID as `UNIVERSAL`, so this is always set by the provider rather than configured.

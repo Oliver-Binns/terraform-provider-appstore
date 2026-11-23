@@ -5,6 +5,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"regexp"
 
@@ -16,6 +17,8 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/types"
 	"github.com/hashicorp/terraform-plugin-log/tflog"
 	"github.com/oliver-binns/appstore-go/bundleids"
+	"github.com/oliver-binns/appstore-go/networking"
+	"github.com/oliver-binns/appstore-go/openapi"
 )
 
 // Ensure provider defined types fully satisfy framework interfaces.
@@ -79,16 +82,19 @@ func (r *BundleIDResource) Schema(ctx context.Context, req resource.SchemaReques
 				},
 			},
 			"platform": schema.StringAttribute{
-				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The platform for the bundle ID: `IOS`, `MAC_OS`, or `UNIVERSAL`. Immutable after creation — the App Store Connect API may normalize the value (e.g. `IOS` becomes `UNIVERSAL`). To recreate with a different platform, remove and re-add the resource.",
+				MarkdownDescription: "The platform of the bundle ID. App Store Connect now stores every new bundle ID as `UNIVERSAL`, so this is always set by the provider rather than configured.",
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.UseStateForUnknown(),
+				},
 			},
 			"seed_id": schema.StringAttribute{
 				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The team's seed ID assigned to the bundle ID. Assigned by Apple if not specified.",
+				MarkdownDescription: "The team's seed ID assigned to the bundle ID. Assigned by Apple if not specified. Changing this forces a new resource to be created.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
+					stringplanmodifier.RequiresReplaceIfConfigured(),
 				},
 			},
 		},
@@ -148,8 +154,9 @@ func (r *BundleIDResource) Create(ctx context.Context, req resource.CreateReques
 	bundleID, err := r.client.CreateBundleID(ctx, bundleids.BundleID{
 		Name:       data.Name.ValueString(),
 		Identifier: data.Identifier.ValueString(),
-		Platform:   bundleids.Platform(data.Platform.ValueString()),
-		SeedID:     data.SeedID.ValueString(),
+		// App Store Connect requires a platform but stores every value as UNIVERSAL.
+		Platform: openapi.Universal,
+		SeedID:   data.SeedID.ValueString(),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create bundle ID, got error: %s", err))
@@ -181,6 +188,11 @@ func (r *BundleIDResource) Read(ctx context.Context, req resource.ReadRequest, r
 	}
 
 	bundleID, err := r.client.GetBundleID(ctx, data.ID.ValueString())
+	if errors.Is(err, networking.ErrNotFound) {
+		// Deleted outside Terraform: drop it from state so it gets recreated.
+		resp.State.RemoveResource(ctx)
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to read bundle ID, got error: %s", err))
 		return
@@ -247,7 +259,8 @@ func (r *BundleIDResource) ImportState(ctx context.Context, req resource.ImportS
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to import bundle ID, got error: %s", err))
 		return
 	}
-	if bundleID == nil {
+	// The identifier filter can also match longer identifiers (e.g. com.example.app.widget).
+	if bundleID == nil || bundleID.Identifier != req.ID {
 		resp.Diagnostics.AddError("Not Found", fmt.Sprintf("No bundle ID found with identifier %q", req.ID))
 		return
 	}

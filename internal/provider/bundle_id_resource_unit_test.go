@@ -6,6 +6,7 @@ package provider
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -73,7 +74,7 @@ func bundleIDPlanVal(s schema.Schema) tftypes.Value {
 		"id":         tftypes.NewValue(tftypes.String, ""),
 		"name":       tftypes.NewValue(tftypes.String, "My App"),
 		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
-		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
+		"platform":   tftypes.NewValue(tftypes.String, tftypes.UnknownValue),
 		"seed_id":    tftypes.NewValue(tftypes.String, nil),
 	})
 }
@@ -131,7 +132,7 @@ func TestBundleIDResource_Create_SetsStateCorrectly(t *testing.T) {
 		t.Errorf("expected Identifier 'com.example.myapp', got %q", data.Identifier.ValueString())
 	}
 	if data.Platform.ValueString() != "UNIVERSAL" {
-		t.Errorf("expected Platform 'IOS', got %q", data.Platform.ValueString())
+		t.Errorf("expected Platform 'UNIVERSAL', got %q", data.Platform.ValueString())
 	}
 	if data.SeedID.ValueString() != "ABCDE12345" {
 		t.Errorf("expected SeedID 'ABCDE12345', got %q", data.SeedID.ValueString())
@@ -705,7 +706,7 @@ func TestBundleIDResource_ValidateConfig_Name(t *testing.T) {
 				"id":         tftypes.NewValue(tftypes.String, nil),
 				"name":       tc.name,
 				"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
-				"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
+				"platform":   tftypes.NewValue(tftypes.String, nil),
 				"seed_id":    tftypes.NewValue(tftypes.String, nil),
 			})
 
@@ -718,5 +719,104 @@ func TestBundleIDResource_ValidateConfig_Name(t *testing.T) {
 				t.Fatalf("wantErr=%v, diagnostics: %v", tc.wantErr, resp.Diagnostics)
 			}
 		})
+	}
+}
+
+func TestBundleIDResource_Create_AlwaysSendsUniversalPlatform(t *testing.T) {
+	var capturedBundleID bundleids.BundleID
+
+	r := &BundleIDResource{
+		client: &mockBundleIDClient{
+			createBundleIDFn: func(ctx context.Context, bundleID bundleids.BundleID) (*bundleids.BundleID, error) {
+				capturedBundleID = bundleID
+				return &bundleids.BundleID{ID: "bundle-uuid", Platform: openapi.Universal}, nil
+			},
+			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
+				return &bundleids.BundleID{ID: "bundle-uuid", Platform: openapi.Universal}, nil
+			},
+		},
+	}
+
+	s := bundleIDResourceSchema()
+	planVal := bundleIDPlanVal(s)
+
+	r.Create(context.Background(), resource.CreateRequest{
+		Plan: tfsdk.Plan{Schema: s, Raw: planVal},
+	}, &resource.CreateResponse{
+		State: tfsdk.State{Schema: s, Raw: planVal},
+	})
+
+	if capturedBundleID.Platform != openapi.Universal {
+		t.Errorf("expected platform %q passed to client, got %q", openapi.Universal, capturedBundleID.Platform)
+	}
+}
+
+func TestBundleIDResource_Schema_PlatformIsComputedOnly(t *testing.T) {
+	attr := bundleIDResourceSchema().Attributes["platform"]
+	if !attr.IsComputed() || attr.IsOptional() || attr.IsRequired() {
+		t.Fatalf("expected platform to be computed-only, got computed=%v optional=%v required=%v",
+			attr.IsComputed(), attr.IsOptional(), attr.IsRequired())
+	}
+}
+
+func TestBundleIDResource_Read_RemovesResourceWhenNotFound(t *testing.T) {
+	r := &BundleIDResource{
+		client: &mockBundleIDClient{
+			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
+				return nil, fmt.Errorf("%w: no bundle ID exists for id %q", networking.ErrNotFound, id)
+			},
+		},
+	}
+
+	s := bundleIDResourceSchema()
+	stateVal := tftypes.NewValue(s.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":         tftypes.NewValue(tftypes.String, "bundle-uuid"),
+		"name":       tftypes.NewValue(tftypes.String, "My App"),
+		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
+		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
+	})
+
+	resp := &resource.ReadResponse{State: tfsdk.State{Schema: s, Raw: stateVal}}
+	r.Read(context.Background(), resource.ReadRequest{
+		State: tfsdk.State{Schema: s, Raw: stateVal},
+	}, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no error, got: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+	if !resp.State.Raw.IsNull() {
+		t.Fatal("expected resource to be removed from state")
+	}
+}
+
+func TestBundleIDResource_ImportState_RejectsNonExactIdentifierMatch(t *testing.T) {
+	r := &BundleIDResource{
+		client: &mockBundleIDClient{
+			findBundleIDByIdentifierFn: func(ctx context.Context, identifier string) (*bundleids.BundleID, error) {
+				// The API's identifier filter can return a longer identifier first.
+				return &bundleids.BundleID{
+					ID:         "widget-uuid",
+					Identifier: identifier + ".widget",
+					Platform:   openapi.Universal,
+				}, nil
+			},
+		},
+	}
+
+	s := bundleIDResourceSchema()
+	emptyVal := tftypes.NewValue(s.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":         tftypes.NewValue(tftypes.String, ""),
+		"name":       tftypes.NewValue(tftypes.String, nil),
+		"identifier": tftypes.NewValue(tftypes.String, nil),
+		"platform":   tftypes.NewValue(tftypes.String, nil),
+		"seed_id":    tftypes.NewValue(tftypes.String, nil),
+	})
+
+	resp := &resource.ImportStateResponse{State: tfsdk.State{Schema: s, Raw: emptyVal}}
+	r.ImportState(context.Background(), resource.ImportStateRequest{ID: "com.example.myapp"}, resp)
+
+	if !resp.Diagnostics.HasError() {
+		t.Fatal("expected an error when the only match is a different identifier")
 	}
 }

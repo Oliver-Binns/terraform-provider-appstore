@@ -27,7 +27,7 @@ func TestAccBundleIDResource(t *testing.T) {
 		Steps: []resource.TestStep{
 			// Create and Read testing
 			{
-				Config: testAccBundleIDResourceConfig(identifier, name, "UNIVERSAL"),
+				Config: testAccBundleIDResourceConfig(identifier, name),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_bundle_id.test",
@@ -72,7 +72,7 @@ func TestAccBundleIDResource(t *testing.T) {
 			},
 			// Update name and read
 			{
-				Config: testAccBundleIDResourceConfig(identifier, renamedName, "UNIVERSAL"),
+				Config: testAccBundleIDResourceConfig(identifier, renamedName),
 				ConfigStateChecks: []statecheck.StateCheck{
 					statecheck.ExpectKnownValue(
 						"appstoreconnect_bundle_id.test",
@@ -91,43 +91,11 @@ func TestAccBundleIDResource(t *testing.T) {
 	})
 }
 
-// TestAccBundleIDResource_Platforms checks that each supported platform value
-// can be created and stays stable in state. App Store Connect has been seen to
-// store IOS as UNIVERSAL; the framework's post-apply consistency and empty-plan
-// checks will fail (naming both values) if the API rewrites a configured value.
-func TestAccBundleIDResource_Platforms(t *testing.T) {
-	for _, platform := range []string{"IOS", "MAC_OS", "UNIVERSAL"} {
-		t.Run(platform, func(t *testing.T) {
-			shortID := uuid.New().String()[:8]
-			identifier := fmt.Sprintf("uk.co.oliverbinns.%s", shortID)
-			name := fmt.Sprintf("Test App %s", shortID)
-
-			resource.ParallelTest(t, resource.TestCase{
-				PreCheck:                 func() { testAccPreCheck(t) },
-				ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
-				Steps: []resource.TestStep{
-					{
-						Config: testAccBundleIDResourceConfig(identifier, name, platform),
-						ConfigStateChecks: []statecheck.StateCheck{
-							statecheck.ExpectKnownValue(
-								"appstoreconnect_bundle_id.test",
-								tfjsonpath.New("platform"),
-								knownvalue.StringExact(platform),
-							),
-						},
-					},
-				},
-			})
-		})
-	}
-}
-
-func testAccBundleIDResourceConfig(identifier, name, platform string) string {
+func testAccBundleIDResourceConfig(identifier, name string) string {
 	return fmt.Sprintf(`
 resource "appstoreconnect_bundle_id" "test" {
   identifier = %q
   name       = %q
-  platform   = %q
 }
 
 variable "issuer_id" {
@@ -150,5 +118,5 @@ provider "appstoreconnect" {
   key_id      = var.key_id
   private_key = var.private_key
 }
-`, identifier, name, platform)
+`, identifier, name)
 }
