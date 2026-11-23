@@ -301,6 +301,13 @@ func TestBundleIDResource_Create_ErrorsWhenBundleIDNeverBecomesVisible(t *testin
 	if !resp.Diagnostics.HasError() {
 		t.Fatal("expected error diagnostic, got none")
 	}
+
+	// The created bundle ID must still be tracked, or the next apply recreates it and gets a 409.
+	var state BundleIDResourceModel
+	resp.Diagnostics.Append(resp.State.Get(context.Background(), &state)...)
+	if got := state.ID.ValueString(); got != "bundle-uuid" {
+		t.Fatalf("expected state id %q after visibility timeout, got %q", "bundle-uuid", got)
+	}
 }
 
 func TestBundleIDResource_Read_SetsStateCorrectly(t *testing.T) {
@@ -745,6 +752,46 @@ func TestBundleIDResource_ValidateConfig_Name(t *testing.T) {
 				"id":         tftypes.NewValue(tftypes.String, nil),
 				"name":       tc.name,
 				"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
+				"platform":   tftypes.NewValue(tftypes.String, nil),
+				"seed_id":    tftypes.NewValue(tftypes.String, nil),
+			})
+
+			resp := &resource.ValidateConfigResponse{}
+			(&BundleIDResource{}).ValidateConfig(context.Background(), resource.ValidateConfigRequest{
+				Config: tfsdk.Config{Schema: s, Raw: raw},
+			}, resp)
+
+			if resp.Diagnostics.HasError() != tc.wantErr {
+				t.Fatalf("wantErr=%v, diagnostics: %v", tc.wantErr, resp.Diagnostics)
+			}
+		})
+	}
+}
+
+func TestBundleIDResource_ValidateConfig_Identifier(t *testing.T) {
+	tests := map[string]struct {
+		identifier tftypes.Value
+		wantErr    bool
+	}{
+		"reverse dns":         {tftypes.NewValue(tftypes.String, "com.example.myapp"), false},
+		"hyphens and digits":  {tftypes.NewValue(tftypes.String, "com.example-2.My-App"), false},
+		"wildcard suffix":     {tftypes.NewValue(tftypes.String, "com.example.*"), false},
+		"wildcard only":       {tftypes.NewValue(tftypes.String, "*"), false},
+		"underscore":          {tftypes.NewValue(tftypes.String, "com.example.my_app"), true},
+		"space":               {tftypes.NewValue(tftypes.String, "com.example.my app"), true},
+		"non-ascii letter":    {tftypes.NewValue(tftypes.String, "com.exämple.app"), true},
+		"asterisk not at end": {tftypes.NewValue(tftypes.String, "com.*.app"), true},
+		"empty":               {tftypes.NewValue(tftypes.String, ""), true},
+		"unknown":             {tftypes.NewValue(tftypes.String, tftypes.UnknownValue), false},
+	}
+
+	for name, tc := range tests {
+		t.Run(name, func(t *testing.T) {
+			s := bundleIDResourceSchema()
+			raw := tftypes.NewValue(s.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+				"id":         tftypes.NewValue(tftypes.String, nil),
+				"name":       tftypes.NewValue(tftypes.String, "My App"),
+				"identifier": tc.identifier,
 				"platform":   tftypes.NewValue(tftypes.String, nil),
 				"seed_id":    tftypes.NewValue(tftypes.String, nil),
 			})

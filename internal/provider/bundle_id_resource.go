@@ -29,6 +29,10 @@ var _ resource.ResourceWithValidateConfig = &BundleIDResource{}
 // App Store Connect only accepts letters, digits, spaces and . - ' in bundle ID names.
 var bundleIDNamePattern = regexp.MustCompile(`^[\p{L}\p{N} .'-]+$`)
 
+// Bundle ID strings may only contain A-Z, a-z, 0-9, hyphens and periods (see CFBundleIdentifier docs).
+// Wildcard App IDs end in "*", for example "com.example.*", or are just "*".
+var bundleIDIdentifierPattern = regexp.MustCompile(`^(?:[A-Za-z0-9.-]+\*?|\*)$`)
+
 type bundleIDClient interface {
 	GetBundleID(ctx context.Context, id string) (*bundleids.BundleID, error)
 	FindBundleIDByIdentifier(ctx context.Context, identifier string) (*bundleids.BundleID, error)
@@ -76,7 +80,7 @@ func (r *BundleIDResource) Schema(ctx context.Context, req resource.SchemaReques
 			},
 			"identifier": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The bundle ID identifier string (e.g. `com.example.app`). Immutable after creation.",
+				MarkdownDescription: "The bundle ID identifier string (e.g. `com.example.app`). May only contain letters, numbers, `-` and `.`, optionally ending in `*` for a wildcard App ID. Immutable after creation.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.RequiresReplace(),
 				},
@@ -102,18 +106,27 @@ func (r *BundleIDResource) Schema(ctx context.Context, req resource.SchemaReques
 }
 
 func (r *BundleIDResource) ValidateConfig(ctx context.Context, req resource.ValidateConfigRequest, resp *resource.ValidateConfigResponse) {
-	var name types.String
+	var name, identifier types.String
 
 	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("name"), &name)...)
-	if resp.Diagnostics.HasError() || name.IsNull() || name.IsUnknown() {
+	resp.Diagnostics.Append(req.Config.GetAttribute(ctx, path.Root("identifier"), &identifier)...)
+	if resp.Diagnostics.HasError() {
 		return
 	}
 
-	if !bundleIDNamePattern.MatchString(name.ValueString()) {
+	if !name.IsNull() && !name.IsUnknown() && !bundleIDNamePattern.MatchString(name.ValueString()) {
 		resp.Diagnostics.AddAttributeError(
 			path.Root("name"),
 			"Invalid Bundle ID Name",
 			"The name may only contain letters, numbers, spaces and the characters `.`, `-` and `'`.",
+		)
+	}
+
+	if !identifier.IsNull() && !identifier.IsUnknown() && !bundleIDIdentifierPattern.MatchString(identifier.ValueString()) {
+		resp.Diagnostics.AddAttributeError(
+			path.Root("identifier"),
+			"Invalid Bundle ID Identifier",
+			"The identifier may only contain letters, numbers and the characters `-` and `.`, optionally ending in `*` for a wildcard App ID.",
 		)
 	}
 }
@@ -166,10 +179,15 @@ func (r *BundleIDResource) Create(ctx context.Context, req resource.CreateReques
 	tflog.Trace(ctx, "created a new bundle ID")
 
 	// Wait for eventual consistency before the implicit post-apply refresh reads this back.
+	created := bundleID
 	bundleID, err = waitForResource(ctx, func() (*bundleids.BundleID, error) {
-		return r.client.GetBundleID(ctx, bundleID.ID)
+		return r.client.GetBundleID(ctx, created.ID)
 	})
 	if err != nil {
+		// Still save what was created so Terraform tracks it (as tainted) instead of
+		// trying to create it again and getting a 409 for the reused identifier.
+		r.populateState(&data, created)
+		resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Bundle ID was created but did not become visible in time: %s", err))
 		return
 	}
