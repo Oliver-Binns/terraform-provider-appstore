@@ -351,6 +351,56 @@ func TestBundleIDResource_Update_SetsNameCorrectly(t *testing.T) {
 	}
 }
 
+func TestBundleIDResource_Update_KeepsPlanWhenResponseOmitsAttributes(t *testing.T) {
+	r := &BundleIDResource{
+		client: &mockBundleIDClient{
+			modifyBundleIDFn: func(ctx context.Context, id string, bundleID bundleids.BundleID) (*bundleids.BundleID, error) {
+				// A response with no attributes decodes to blank fields.
+				return &bundleids.BundleID{ID: id}, nil
+			},
+		},
+	}
+
+	s := bundleIDResourceSchema()
+	planVal := tftypes.NewValue(s.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":         tftypes.NewValue(tftypes.String, "bundle-uuid"),
+		"name":       tftypes.NewValue(tftypes.String, "My App renamed"),
+		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
+		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
+	})
+
+	req := resource.UpdateRequest{
+		Plan:  tfsdk.Plan{Schema: s, Raw: planVal},
+		State: tfsdk.State{Schema: s, Raw: planVal},
+	}
+	resp := &resource.UpdateResponse{
+		State: tfsdk.State{Schema: s, Raw: planVal},
+	}
+
+	r.Update(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
+	}
+
+	var data BundleIDResourceModel
+	resp.State.Get(context.Background(), &data)
+
+	if data.Name.ValueString() != "My App renamed" {
+		t.Errorf("expected Name 'My App renamed', got %q", data.Name.ValueString())
+	}
+	if data.Identifier.ValueString() != "com.example.myapp" {
+		t.Errorf("expected Identifier 'com.example.myapp', got %q", data.Identifier.ValueString())
+	}
+	if data.Platform.ValueString() != "UNIVERSAL" {
+		t.Errorf("expected Platform 'UNIVERSAL', got %q", data.Platform.ValueString())
+	}
+	if data.SeedID.ValueString() != "ABCDE12345" {
+		t.Errorf("expected SeedID 'ABCDE12345', got %q", data.SeedID.ValueString())
+	}
+}
+
 func TestBundleIDResource_Delete_CallsDeleteOnClient(t *testing.T) {
 	var capturedID string
 

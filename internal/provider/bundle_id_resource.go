@@ -236,7 +236,7 @@ func (r *BundleIDResource) Update(ctx context.Context, req resource.UpdateReques
 		return
 	}
 
-	bundleID, err := r.client.ModifyBundleID(ctx, data.ID.ValueString(), bundleids.BundleID{
+	_, err := r.client.ModifyBundleID(ctx, data.ID.ValueString(), bundleids.BundleID{
 		Name: data.Name.ValueString(),
 	})
 	if err != nil {
@@ -246,8 +246,8 @@ func (r *BundleIDResource) Update(ctx context.Context, req resource.UpdateReques
 
 	tflog.Trace(ctx, "modified a bundle ID")
 
-	r.populateState(&data, bundleID)
-
+	// Only the name can change, so save the plan rather than the PATCH response, which
+	// may omit attributes (leaving them blank) and would make state differ from the plan.
 	resp.Diagnostics.Append(resp.State.Set(ctx, &data)...)
 }
 
