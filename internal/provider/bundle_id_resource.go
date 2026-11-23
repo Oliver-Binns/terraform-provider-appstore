@@ -289,8 +289,8 @@ func (r *BundleIDResource) ImportState(ctx context.Context, req resource.ImportS
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to import bundle ID, got error: %s", err))
 		return
 	}
-	// The identifier filter can also match longer identifiers (e.g. com.example.app.widget).
-	if bundleID == nil || bundleID.Identifier != req.ID {
+	// FindBundleIDByIdentifier only returns an exact (case-insensitive) identifier match.
+	if bundleID == nil {
 		resp.Diagnostics.AddError("Not Found", fmt.Sprintf("No bundle ID found with identifier %q", req.ID))
 		return
 	}

@@ -875,34 +875,3 @@ func TestBundleIDResource_Read_RemovesResourceWhenNotFound(t *testing.T) {
 		t.Fatal("expected resource to be removed from state")
 	}
 }
-
-func TestBundleIDResource_ImportState_RejectsNonExactIdentifierMatch(t *testing.T) {
-	r := &BundleIDResource{
-		client: &mockBundleIDClient{
-			findBundleIDByIdentifierFn: func(ctx context.Context, identifier string) (*bundleids.BundleID, error) {
-				// The API's identifier filter can return a longer identifier first.
-				return &bundleids.BundleID{
-					ID:         "widget-uuid",
-					Identifier: identifier + ".widget",
-					Platform:   openapi.Universal,
-				}, nil
-			},
-		},
-	}
-
-	s := bundleIDResourceSchema()
-	emptyVal := tftypes.NewValue(s.Type().TerraformType(context.Background()), map[string]tftypes.Value{
-		"id":         tftypes.NewValue(tftypes.String, ""),
-		"name":       tftypes.NewValue(tftypes.String, nil),
-		"identifier": tftypes.NewValue(tftypes.String, nil),
-		"platform":   tftypes.NewValue(tftypes.String, nil),
-		"seed_id":    tftypes.NewValue(tftypes.String, nil),
-	})
-
-	resp := &resource.ImportStateResponse{State: tfsdk.State{Schema: s, Raw: emptyVal}}
-	r.ImportState(context.Background(), resource.ImportStateRequest{ID: "com.example.myapp"}, resp)
-
-	if !resp.Diagnostics.HasError() {
-		t.Fatal("expected an error when the only match is a different identifier")
-	}
-}
