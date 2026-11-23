@@ -689,6 +689,9 @@ func TestBundleIDResource_ValidateConfig_Name(t *testing.T) {
 		"allowed punctuation":       {tftypes.NewValue(tftypes.String, "Oliver's App-v1.0"), false},
 		"parentheses":               {tftypes.NewValue(tftypes.String, "My App (renamed)"), true},
 		"underscore":                {tftypes.NewValue(tftypes.String, "My_App"), true},
+		"leading space":             {tftypes.NewValue(tftypes.String, " My App"), true},
+		"trailing space":            {tftypes.NewValue(tftypes.String, "My App "), true},
+		"only spaces":               {tftypes.NewValue(tftypes.String, "   "), true},
 		"unknown":                   {tftypes.NewValue(tftypes.String, tftypes.UnknownValue), false},
 	}
 

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"regexp"
+	"strings"
 
 	"github.com/hashicorp/terraform-plugin-framework/path"
 	"github.com/hashicorp/terraform-plugin-framework/resource"
@@ -76,7 +77,7 @@ func (r *BundleIDResource) Schema(ctx context.Context, req resource.SchemaReques
 			},
 			"name": schema.StringAttribute{
 				Required:            true,
-				MarkdownDescription: "The name of the bundle ID. May only contain letters, numbers, spaces and the characters `.`, `-` and `'`.",
+				MarkdownDescription: "The name of the bundle ID. May only contain letters, numbers, spaces and the characters `.`, `-` and `'`, and must not start or end with a space.",
 			},
 			"identifier": schema.StringAttribute{
 				Required:            true,
@@ -112,12 +113,21 @@ func (r *BundleIDResource) ValidateConfig(ctx context.Context, req resource.Vali
 		return
 	}
 
-	if !name.IsNull() && !name.IsUnknown() && !bundleIDNamePattern.MatchString(name.ValueString()) {
-		resp.Diagnostics.AddAttributeError(
-			path.Root("name"),
-			"Invalid Bundle ID Name",
-			"The name may only contain letters, numbers, spaces and the characters `.`, `-` and `'`.",
-		)
+	if !name.IsNull() && !name.IsUnknown() {
+		if !bundleIDNamePattern.MatchString(name.ValueString()) {
+			resp.Diagnostics.AddAttributeError(
+				path.Root("name"),
+				"Invalid Bundle ID Name",
+				"The name may only contain letters, numbers, spaces and the characters `.`, `-` and `'`.",
+			)
+		} else if strings.TrimSpace(name.ValueString()) != name.ValueString() {
+			// App Store Connect may trim the name, which would make the saved state differ from the plan.
+			resp.Diagnostics.AddAttributeError(
+				path.Root("name"),
+				"Invalid Bundle ID Name",
+				"The name must not start or end with a space.",
+			)
+		}
 	}
 
 	if !identifier.IsNull() && !identifier.IsUnknown() && !bundleIDIdentifierPattern.MatchString(identifier.ValueString()) {
