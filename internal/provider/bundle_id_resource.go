@@ -235,6 +235,11 @@ func (r *BundleIDResource) Delete(ctx context.Context, req resource.DeleteReques
 	}
 
 	err := r.client.DeleteBundleID(ctx, data.ID.ValueString())
+	if errors.Is(err, networking.ErrNotFound) {
+		// Already gone (deleted out of band, or a previous destroy timed out while waiting).
+		tflog.Trace(ctx, "bundle ID already deleted")
+		return
+	}
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to delete bundle ID, got error: %s", err))
 		return

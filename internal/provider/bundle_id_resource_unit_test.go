@@ -603,6 +603,45 @@ func TestBundleIDResource_Delete_DoesNotWait_WhenDeleteBundleIDFails(t *testing.
 	}
 }
 
+func TestBundleIDResource_Delete_SucceedsWhenAlreadyDeleted(t *testing.T) {
+	var getBundleIDCalled bool
+
+	r := &BundleIDResource{
+		client: &mockBundleIDClient{
+			deleteBundleIDFn: func(ctx context.Context, id string) error {
+				return fmt.Errorf("%w: no bundle ID exists for id %q", networking.ErrNotFound, id)
+			},
+			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
+				getBundleIDCalled = true
+				return nil, networking.ErrNotFound
+			},
+		},
+	}
+
+	s := bundleIDResourceSchema()
+	stateVal := tftypes.NewValue(s.Type().TerraformType(context.Background()), map[string]tftypes.Value{
+		"id":         tftypes.NewValue(tftypes.String, "bundle-uuid"),
+		"name":       tftypes.NewValue(tftypes.String, "My App"),
+		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
+		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
+		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
+	})
+
+	req := resource.DeleteRequest{
+		State: tfsdk.State{Schema: s, Raw: stateVal},
+	}
+	resp := &resource.DeleteResponse{}
+
+	r.Delete(context.Background(), req, resp)
+
+	if resp.Diagnostics.HasError() {
+		t.Fatalf("expected no error diagnostics, got: %v", resp.Diagnostics)
+	}
+	if getBundleIDCalled {
+		t.Fatal("expected Delete NOT to poll GetBundleID when the bundle ID is already gone")
+	}
+}
+
 func TestBundleIDResource_ImportState_ByIdentifier(t *testing.T) {
 	const testIdentifier = "com.example.myapp"
 
