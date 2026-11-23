@@ -20,11 +20,8 @@ Manages a bundle ID registered in App Store Connect.
 - `identifier` (String) The bundle ID identifier string (e.g. `com.example.app`). May only contain letters, numbers, `-` and `.`, optionally ending in `*` for a wildcard App ID. Immutable after creation.
 - `name` (String) The name of the bundle ID. May only contain letters, numbers, spaces and the characters `.`, `-` and `'`.
 
-### Optional
-
-- `seed_id` (String) The team's seed ID assigned to the bundle ID. Assigned by Apple if not specified. Changing this forces a new resource to be created.
-
 ### Read-Only
 
 - `id` (String) The unique identifier for the bundle ID resource (Apple-assigned, not the identifier string).
 - `platform` (String) The platform of the bundle ID. App Store Connect now stores every new bundle ID as `UNIVERSAL`, so this is always set by the provider rather than configured.
+- `seed_id` (String) The App ID Prefix (seed ID) Apple assigned to the bundle ID. This is normally the team ID.

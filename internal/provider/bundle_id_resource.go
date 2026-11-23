@@ -93,12 +93,10 @@ func (r *BundleIDResource) Schema(ctx context.Context, req resource.SchemaReques
 				},
 			},
 			"seed_id": schema.StringAttribute{
-				Optional:            true,
 				Computed:            true,
-				MarkdownDescription: "The team's seed ID assigned to the bundle ID. Assigned by Apple if not specified. Changing this forces a new resource to be created.",
+				MarkdownDescription: "The App ID Prefix (seed ID) Apple assigned to the bundle ID. This is normally the team ID.",
 				PlanModifiers: []planmodifier.String{
 					stringplanmodifier.UseStateForUnknown(),
-					stringplanmodifier.RequiresReplaceIfConfigured(),
 				},
 			},
 		},
@@ -169,7 +167,6 @@ func (r *BundleIDResource) Create(ctx context.Context, req resource.CreateReques
 		Identifier: data.Identifier.ValueString(),
 		// App Store Connect requires a platform but stores every value as UNIVERSAL.
 		Platform: openapi.Universal,
-		SeedID:   data.SeedID.ValueString(),
 	})
 	if err != nil {
 		resp.Diagnostics.AddError("Client Error", fmt.Sprintf("Unable to create bundle ID, got error: %s", err))

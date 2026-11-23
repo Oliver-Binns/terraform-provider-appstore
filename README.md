@@ -96,9 +96,8 @@ You can register bundle IDs as a Terraform resource (`appstoreconnect_bundle_id`
 
 - **identifier** (required): The bundle ID string, e.g. `com.example.app`. Immutable after creation.
 - **name** (required): The name of the bundle ID. May only contain letters, numbers, spaces and `.`, `-`, `'`.
-- **seed_id** (optional): The team's seed ID. Assigned by Apple if not specified. Changing it recreates the bundle ID.
 
-`id` and `platform` are read-only and set by Apple. App Store Connect stores every new bundle ID as `UNIVERSAL`, so `platform` is not configurable. Existing bundle IDs can be imported by identifier string.
+`id`, `platform` and `seed_id` (the App ID Prefix, normally your team ID) are read-only and set by Apple. App Store Connect stores every new bundle ID as `UNIVERSAL`, so `platform` is not configurable. Existing bundle IDs can be imported by identifier string.
 
 ```tf
 resource "appstoreconnect_bundle_id" "example" {

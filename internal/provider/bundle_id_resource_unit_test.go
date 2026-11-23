@@ -139,59 +139,6 @@ func TestBundleIDResource_Create_SetsStateCorrectly(t *testing.T) {
 	}
 }
 
-func TestBundleIDResource_Create_PassesSeedIDToClient(t *testing.T) {
-	var capturedBundleID bundleids.BundleID
-
-	r := &BundleIDResource{
-		client: &mockBundleIDClient{
-			createBundleIDFn: func(ctx context.Context, bundleID bundleids.BundleID) (*bundleids.BundleID, error) {
-				capturedBundleID = bundleID
-				return &bundleids.BundleID{
-					ID:         "bundle-uuid",
-					Name:       bundleID.Name,
-					Identifier: bundleID.Identifier,
-					Platform:   bundleID.Platform,
-					SeedID:     bundleID.SeedID,
-				}, nil
-			},
-			getBundleIDFn: func(ctx context.Context, id string) (*bundleids.BundleID, error) {
-				return &bundleids.BundleID{
-					ID:         "bundle-uuid",
-					Name:       "My App",
-					Identifier: "com.example.myapp",
-					Platform:   openapi.Universal,
-					SeedID:     "ABCDE12345",
-				}, nil
-			},
-		},
-	}
-
-	s := bundleIDResourceSchema()
-	planVal := tftypes.NewValue(s.Type().TerraformType(context.Background()), map[string]tftypes.Value{
-		"id":         tftypes.NewValue(tftypes.String, ""),
-		"name":       tftypes.NewValue(tftypes.String, "My App"),
-		"identifier": tftypes.NewValue(tftypes.String, "com.example.myapp"),
-		"platform":   tftypes.NewValue(tftypes.String, "UNIVERSAL"),
-		"seed_id":    tftypes.NewValue(tftypes.String, "ABCDE12345"),
-	})
-
-	req := resource.CreateRequest{
-		Plan: tfsdk.Plan{Schema: s, Raw: planVal},
-	}
-	resp := &resource.CreateResponse{
-		State: tfsdk.State{Schema: s, Raw: planVal},
-	}
-
-	r.Create(context.Background(), req, resp)
-
-	if resp.Diagnostics.HasError() {
-		t.Fatalf("unexpected error: %s", resp.Diagnostics.Errors()[0].Detail())
-	}
-	if capturedBundleID.SeedID != "ABCDE12345" {
-		t.Errorf("expected SeedID 'ABCDE12345' passed to client, got %q", capturedBundleID.SeedID)
-	}
-}
-
 func TestBundleIDResource_Create_ReportsClientError(t *testing.T) {
 	r := &BundleIDResource{
 		client: &mockBundleIDClient{
