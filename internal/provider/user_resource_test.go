@@ -6,6 +6,7 @@ package provider
 import (
 	"fmt"
 	"regexp"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -190,4 +191,59 @@ provider "appstoreconnect" {
   private_key = var.private_key
 }
 `, accountEmail, role, all_apps_visible, app_visible)
+}
+
+// TestAccUserResource_ManyVisibleApps reproduces
+// https://github.com/Oliver-Binns/appstore-go/issues/78: users with more than
+// 10 visible apps only read back the first 10, causing perpetual drift.
+func TestAccUserResource_ManyVisibleApps(t *testing.T) {
+	accountEmail := fmt.Sprintf(
+		"%s@oliverbinns.co.uk",
+		uuid.New().String(),
+	)
+
+	appIDs := []string{
+		"1107339753", "1308545606", "906717788", "670805933",
+		"654457068", "531004539", "1522043800", "1590387829",
+		"6477749539", "6475118662", "1535326851", "1114302685",
+	}
+
+	quoted := make([]string, len(appIDs))
+	checks := make([]knownvalue.Check, len(appIDs))
+	for i, id := range appIDs {
+		quoted[i] = fmt.Sprintf("%q", id)
+		checks[i] = knownvalue.StringExact(id)
+	}
+	visibleApps := strings.Join(quoted, ", ")
+
+	resource.Test(t, resource.TestCase{
+		PreCheck:                 func() { testAccPreCheck(t) },
+		ProtoV6ProviderFactories: testAccProtoV6ProviderFactories,
+		Steps: []resource.TestStep{
+			// Create and Read: all apps must be read back, and the
+			// post-apply plan must be empty (no drift).
+			{
+				Config: testAccUserResourceConfig(accountEmail, "DEVELOPER", false, visibleApps),
+				ConfigStateChecks: []statecheck.StateCheck{
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
+						tfjsonpath.New("visible_apps"),
+						knownvalue.SetSizeExact(len(appIDs)),
+					),
+					statecheck.ExpectKnownValue(
+						"appstoreconnect_user.test",
+						tfjsonpath.New("visible_apps"),
+						knownvalue.SetExact(checks),
+					),
+				},
+			},
+			// ImportState by email goes through the same lookup path.
+			{
+				ResourceName:      "appstoreconnect_user.test",
+				ImportState:       true,
+				ImportStateId:     accountEmail,
+				ImportStateVerify: true,
+			},
+		},
+	})
 }
