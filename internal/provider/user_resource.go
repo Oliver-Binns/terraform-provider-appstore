@@ -299,7 +299,14 @@ func (r *UserResource) readByEmail(ctx context.Context, data *UserResourceModel,
 		resp.State.RemoveResource(ctx)
 		return
 	}
+	staleID := data.ID.ValueString()
 	r.populateState(ctx, data, user, resp.Diagnostics)
+	if staleID != "" && staleID != user.ID {
+		tflog.Info(ctx, "Re-resolved user by email; replacing stale ID in state", map[string]interface{}{
+			"old_id": staleID,
+			"new_id": user.ID,
+		})
+	}
 	resp.Diagnostics.Append(resp.State.Set(ctx, data)...)
 }
 
