@@ -9,7 +9,7 @@ require (
 	github.com/hashicorp/terraform-plugin-log v0.11.0
 	github.com/hashicorp/terraform-plugin-sdk/v2 v2.41.1
 	github.com/hashicorp/terraform-plugin-testing v1.16.0
-	github.com/oliver-binns/appstore-go v0.0.0-20261123113242-23c232afd25c
+	github.com/oliver-binns/appstore-go v0.0.0-20261123122429-314407cd259b
 )
 
 require (
